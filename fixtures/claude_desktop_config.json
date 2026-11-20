@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "postgres-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres"
+      ],
+      "env": {
+        "POSTGRES_URL": "postgresql://analytics_admin:FAKE_s3cr3t_DO_NOT_USE_9f3k@db-analytics.internal.example:5432/analytics_prod"
+      }
+    },
+    "filesystem-mcp": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--mount",
+        "type=bind,src=/Users/demo/Documents/reports,dst=/projects/reports,ro",
+        "mcp/filesystem",
+        "/projects"
+      ]
+    }
+  }
+}

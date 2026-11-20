@@ -1,0 +1,546 @@
+"""
+AutoDiscover — live demo UI.
+
+    streamlit run app.py
+
+Journey: Discover → Match → Suggest → Review → Link.
+
+How the v2 toggle works
+-----------------------
+Discovery scans a *live config workspace* (``data/live_configs/fixtures/``) that
+is restored from ``fixtures/`` on reset. "Load v2 Config Update" copies the v2
+contents over the live ``claude_desktop_config.json``, which simulates the user
+editing that file in place. Because the file path is unchanged, filesystem-mcp
+keeps the same passport_id and the engine flags a metadata change on it, exactly
+as in ``tests/test_acceptance.py``. The repo's own fixtures are never modified.
+"""
+
+from __future__ import annotations
+
+import html
+import json
+import shutil
+from pathlib import Path
+from typing import Any
+
+import streamlit as st
+
+from src.engine import (
+    APPROVED,
+    INCIDENT,
+    MISSING_APPROVAL,
+    REDACTED,
+    UNKNOWN,
+    AutoDiscoverEngine,
+)
+
+# ── Paths ──────────────────────────────────────────────────────────────────────
+
+ROOT = Path(__file__).resolve().parent
+FIXTURES = ROOT / "fixtures"
+DATA = ROOT / "data"
+LIVE = DATA / "live_configs"                 # base_dir for discovery
+LIVE_FIXTURES = LIVE / "fixtures"
+CLAUDE = "fixtures/claude_desktop_config.json"
+CURSOR = "fixtures/cursor_mcp.json"
+CONFIGS = [CLAUDE, CURSOR]
+EVENTS_FILE = FIXTURES / "runtime_events.jsonl"
+APPROVALS_FILE = FIXTURES / "approvals.json"
+
+st.set_page_config(page_title="AutoDiscover · Forkit Passports", page_icon="🛂", layout="wide")
+
+# ── Styling (projector-friendly) ───────────────────────────────────────────────
+
+st.markdown(
+    """
+<style>
+html, body, [class*="css"] { font-size: 18px; }
+.block-container { padding-top: 1.5rem; max-width: 1400px; }
+.badge { display:inline-block; padding:3px 10px; border-radius:999px; font-weight:700;
+         font-size:0.85rem; margin:2px 4px 2px 0; letter-spacing:0.02em; }
+.b-unknown  { background:#fff4d6; color:#7a5200; border:1px solid #e0b44c; }
+.b-redacted { background:#e8eefc; color:#1d3f8f; border:1px solid #8aa6e6; }
+.b-ok       { background:#e3f6e8; color:#14632f; border:1px solid #6cc28a; }
+.b-bad      { background:#fde6e6; color:#a1161b; border:1px solid #ec7f83; }
+.b-warn     { background:#ffe9d6; color:#8a3b00; border:1px solid #f0a060; }
+.b-neutral  { background:#eef0f3; color:#333;    border:1px solid #c5cad3; }
+.card { border:1px solid #d8dce3; border-radius:12px; padding:14px 18px; margin-bottom:12px;
+        background:#ffffff; }
+.card h4 { margin:0 0 6px 0; font-size:1.15rem; }
+.card.merge-warn { border:2px solid #f0a060; background:#fffaf4; }
+.card.incident { border:3px solid #d62828; background:#fff3f3; }
+.card.audit { border:2px solid #4a6fd8; background:#f7f9ff; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.85rem; }
+.kv { margin:2px 0; }
+.kv b { display:inline-block; min-width:140px; color:#555; }
+.diff-del { color:#a1161b; } .diff-add { color:#14632f; }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+
+def badge(text: str, kind: str = "neutral") -> str:
+    return f'<span class="badge b-{kind}">{html.escape(text)}</span>'
+
+
+def value_badge(value: Any) -> str:
+    """Render UNKNOWN / REDACTED explicitly; everything else as mono text."""
+    if value == UNKNOWN:
+        return badge("UNKNOWN", "unknown")
+    if value == REDACTED:
+        return badge("[REDACTED]", "redacted")
+    if value == "read-only":
+        return badge("read-only", "ok")
+    return f'<span class="mono">{html.escape(str(value))}</span>'
+
+
+DEMO_HINTS = {
+    1: "Click **Scan**, point at the [REDACTED] card and the disk check, then open ②.",
+    2: "Point at the SAME NAME and UNKNOWN badges, mint all three, then click **🔄 Simulate Restart** in the sidebar.",
+    3: "Toggle **📝 Load v2 Config Update** in the sidebar, show the diff and why access mode is UNKNOWN, then open ④.",
+    4: "Pick evt-0002 and click Link without consent (blocked), then tick consent and link (MISSING_APPROVAL + INCIDENT). "
+       "Finish with evt-0003 on the filesystem-mcp passport (blocked).",
+}
+
+
+def demo_hint(step: int) -> None:
+    st.caption(f"🎬 Next demo step: {DEMO_HINTS[step]}")
+
+
+def short(pid: str) -> str:
+    return pid[:12] + "…"
+
+
+# ── Workspace / state helpers ──────────────────────────────────────────────────
+
+def restore_live_configs(v2: bool) -> None:
+    """Rebuild the live config workspace from fixtures/ (v1 or v2 Claude config)."""
+    LIVE_FIXTURES.mkdir(parents=True, exist_ok=True)
+    shutil.copy(FIXTURES / "cursor_mcp.json", LIVE_FIXTURES / "cursor_mcp.json")
+    src = "claude_desktop_config_v2.json" if v2 else "claude_desktop_config.json"
+    shutil.copy(FIXTURES / src, LIVE_FIXTURES / "claude_desktop_config.json")
+
+
+def engine() -> AutoDiscoverEngine:
+    return AutoDiscoverEngine(data_dir=DATA, base_dir=LIVE, approvals_path=APPROVALS_FILE)
+
+
+def run_discovery() -> None:
+    st.session_state.candidates = engine().discover_tools(CONFIGS)
+    st.session_state.scanned = True
+
+
+def init_state() -> None:
+    defaults = {
+        "candidates": [],
+        "scanned": False,
+        "v2_active": False,
+        "last_link": None,
+        "last_error": None,
+        "restart_proof": None,
+        "flash": None,
+    }
+    for k, v in defaults.items():
+        st.session_state.setdefault(k, v)
+    if not LIVE_FIXTURES.exists():
+        restore_live_configs(st.session_state.v2_active)
+
+
+def load_events() -> list[dict[str, Any]]:
+    return [json.loads(line) for line in EVENTS_FILE.read_text().splitlines() if line.strip()]
+
+
+def raw_secret_values() -> list[str]:
+    """Raw env values from the live configs — used only to prove none hit disk."""
+    values: list[str] = []
+    for cfg in CONFIGS:
+        data = json.loads((LIVE / cfg).read_text())
+        for spec in (data.get("mcpServers") or {}).values():
+            values += [str(v) for v in (spec.get("env") or {}).values() if v]
+    return values
+
+
+def leaked_secrets() -> list[str]:
+    secrets = raw_secret_values()
+    leaks = []
+    for f in DATA.glob("*.json"):
+        text = f.read_text()
+        leaks += [f.name for s in secrets if s and s in text]
+    return leaks
+
+
+init_state()
+eng = engine()
+
+# ── Sidebar: demo superpowers ──────────────────────────────────────────────────
+
+with st.sidebar:
+    st.markdown("## 🛂 AutoDiscover")
+    st.caption("Zero-touch AI onboarding & passports · built on Forkit Core `compute_id`")
+    st.divider()
+
+    if st.button("🧹 1-Click Reset Demo State", width="stretch", type="primary"):
+        for f in DATA.glob("*.json"):
+            f.unlink()
+        shutil.rmtree(LIVE, ignore_errors=True)
+        st.session_state.clear()
+        restore_live_configs(v2=False)
+        st.session_state.flash = ("success", "Demo reset: registry, links, incidents and changes cleared.")
+        st.rerun()
+
+    if st.button("🔄 Simulate Restart", width="stretch"):
+        before = {c["passport_id"] for c in st.session_state.candidates}
+        v2 = st.session_state.v2_active
+        tab = st.session_state.get("active_tab")
+        st.session_state.clear()                       # wipe ALL in-memory state
+        st.session_state.v2_active = v2                # config on disk did not change
+        if tab:
+            st.session_state.active_tab = tab          # UI nicety only, not engine state
+        run_discovery()                                # re-scan against saved registry
+        after = {c["passport_id"] for c in st.session_state.candidates}
+        registry = engine().passports()
+        st.session_state.restart_proof = {
+            "before": sorted(before),
+            "after": sorted(after),
+            "registry_count": len(registry),
+            "recognized": sorted(after & set(registry)),
+        }
+        st.rerun()
+
+    v2_toggle = st.toggle(
+        "📝 Load v2 Config Update",
+        value=st.session_state.v2_active,
+        help="Simulates editing claude_desktop_config.json in place with the v2 contents.",
+    )
+    if v2_toggle != st.session_state.v2_active:
+        st.session_state.v2_active = v2_toggle
+        restore_live_configs(v2=v2_toggle)
+        run_discovery()
+        fs_minted = any(
+            c["tool_name"] == "filesystem-mcp" and c["source_path"] == CLAUDE and c["known"]
+            for c in st.session_state.candidates
+        )
+        if v2_toggle and not fs_minted:
+            st.session_state.flash = (
+                "warning",
+                "v2 config loaded, but filesystem-mcp has no passport yet, so there is nothing to diff against. "
+                "For the demo: turn v2 off, mint filesystem-mcp in ②, then turn v2 on again.",
+            )
+        else:
+            st.session_state.flash = (
+                "warning" if v2_toggle else "info",
+                "v2 config loaded: filesystem-mcp args changed on disk. See ③."
+                if v2_toggle else "Reverted to the original v1 config.",
+            )
+        st.rerun()
+
+    st.divider()
+    passports = eng.passports()
+    st.metric("Confirmed passports", len(passports))
+    st.metric("Linked events", len(eng.linked_events()))
+    st.metric("Incidents", len(eng.incidents()))
+    st.caption(f"Config mode: **{'v2 (edited)' if st.session_state.v2_active else 'v1 (original)'}**")
+    st.caption("Source of truth: `data/passports.json`")
+
+# ── Header ─────────────────────────────────────────────────────────────────────
+
+st.title("AutoDiscover: Zero-Touch AI Onboarding & Passports")
+st.markdown(
+    badge("Metadata-only", "redacted") + badge("Unknown stays UNKNOWN", "unknown")
+    + badge("No false merges", "warn") + badge("Consent-gated linking", "ok"),
+    unsafe_allow_html=True,
+)
+
+if st.session_state.flash:
+    kind, msg = st.session_state.flash
+    getattr(st, kind)(msg)
+    st.session_state.flash = None
+
+proof = st.session_state.restart_proof
+if proof and proof["registry_count"] == 0:
+    st.info("Restart simulated, but the registry is empty so there is nothing to recognize yet. "
+            "Scan in ①, mint in ②, then click **🔄 Simulate Restart** again.")
+elif proof:
+    same = proof["after"] == proof["recognized"] and (not proof["before"] or proof["before"] == proof["after"])
+    keys = [(p["source_path"], p["tool_name"]) for p in eng.passports().values()]
+    dupes = len(keys) - len(set(keys))
+    if same and dupes == 0:
+        st.success(
+            f"✅ RESTART RECOGNIZED: in-memory state wiped, re-scan matched "
+            f"{len(proof['recognized'])}/{len(proof['after'])} tools to existing passports. "
+            f"Same passport_ids, {proof['registry_count']} passports in registry, 0 duplicates."
+        )
+    else:
+        st.warning(
+            f"Restart re-scan: {len(proof['recognized'])}/{len(proof['after'])} tools already have passports "
+            f"({dupes} duplicates). Mint the rest in ② to see them recognized next time."
+        )
+    with st.expander("Passport IDs before vs. after restart"):
+        st.json({"before_restart": proof["before"], "after_restart": proof["after"]})
+
+# Keyed, stateful tabs: clicking a button inside a tab keeps you on that tab.
+tab1, tab2, tab3, tab4 = st.tabs(
+    ["① Discover", "② Identity & Honesty Review", "③ Metadata Diff & Governance", "④ Consented Linking & Incidents"],
+    key="active_tab",
+    on_change="rerun",
+)
+
+candidates: list[dict[str, Any]] = st.session_state.candidates
+
+# ── ① Discover ─────────────────────────────────────────────────────────────────
+
+with tab1:
+    st.subheader("Step 1 · Local Discovery (Metadata-Only)")
+    demo_hint(1)
+    st.caption("Scans local MCP configs: " + ", ".join(f"`{c}`" for c in CONFIGS))
+    if st.button("🔍 Scan Local MCP Configs", type="primary"):
+        run_discovery()
+        st.session_state.restart_proof = None
+        st.rerun()
+
+    if not st.session_state.scanned:
+        st.info("Click **Scan Local MCP Configs** to start.")
+    else:
+        rows = [{
+            "tool_name": c["tool_name"],
+            "client": c["client"],
+            "source_path": c["source_path"],
+            "command": c["command"],
+            "args": " ".join(c["args"]),
+            "env": ", ".join(f'{k}="{v}"' for k, v in c["env"].items()) or "—",
+            "owner": c["owner"],
+            "version": c["version"],
+            "access_mode": c["access_mode"],
+            "config_hash": c["config_hash"][:12] + "…",
+        } for c in candidates]
+        st.dataframe(rows, width="stretch", hide_index=True)
+
+        redacted = [(c, k) for c in candidates for k, v in c["env"].items() if v == REDACTED]
+        if redacted:
+            items = "".join(
+                f'<div class="kv"><b>{html.escape(c["tool_name"])}</b>'
+                f'<span class="mono">{html.escape(k)}: </span>{badge("[REDACTED]", "redacted")}'
+                f' <span class="mono">({html.escape(c["client"])})</span></div>'
+                for c, k in redacted
+            )
+            st.markdown(
+                f'<div class="card"><h4>🔒 Secrets stripped at discovery</h4>{items}'
+                f'<div style="margin-top:8px;color:#555">Raw values are never hashed, stored, or displayed. '
+                f'Only the env <i>key names</i> are kept.</div></div>',
+                unsafe_allow_html=True,
+            )
+        leaks = leaked_secrets()
+        if leaks:
+            st.error(f"Secret value found in: {', '.join(sorted(set(leaks)))}")
+        else:
+            st.success(f"Disk check: 0 of {len(raw_secret_values())} raw secret values appear anywhere in `data/*.json`.")
+
+# ── ② Identity & Honesty Review ────────────────────────────────────────────────
+
+with tab2:
+    st.subheader("Step 2 · Identity & Honesty Review")
+    demo_hint(2)
+    st.caption(
+        "passport_id = compute_id(passport_type='mcp_server', name, version='UNKNOWN', "
+        "creator_name='UNKNOWN', artifact_hash=sha256(source_path + tool_name + command))"
+    )
+    if not candidates:
+        st.info("Run discovery in Step 1 first.")
+    else:
+        name_sources: dict[str, set[str]] = {}
+        for c in candidates:
+            name_sources.setdefault(c["tool_name"], set()).add(c["source_path"])
+        passports = eng.passports()
+        if st.session_state.v2_active and any(
+            c["source_path"] == CLAUDE and c["passport_id"] not in passports for c in candidates
+        ):
+            st.warning("You are on the edited **v2** config. Minting now records v2 as the baseline, so ③ will "
+                       "have no diff to show. For the demo, turn v2 off in the sidebar first and mint on v1.")
+
+        cols = st.columns(len(candidates))
+        for col, c in zip(cols, candidates, strict=True):
+            with col:
+                collision = len(name_sources[c["tool_name"]]) > 1
+                minted = c["passport_id"] in passports
+                status = badge("CONFIRMED", "ok") if minted else badge("CANDIDATE", "neutral")
+                warn = (
+                    f'<div style="margin:6px 0">{badge("⚠ SAME NAME — DO NOT MERGE: Different Provenance", "warn")}</div>'
+                    if collision else ""
+                )
+                changed = badge("METADATA CHANGED", "bad") if c.get("metadata_changed") else ""
+                st.markdown(
+                    f'<div class="card {"merge-warn" if collision else ""}">'
+                    f'<h4>{html.escape(c["tool_name"])}</h4>{status}{changed}{warn}'
+                    f'<div class="kv"><b>client</b>{value_badge(c["client"])}</div>'
+                    f'<div class="kv"><b>source_path</b>{value_badge(c["source_path"])}</div>'
+                    f'<div class="kv"><b>command</b>{value_badge(c["command"])}</div>'
+                    f'<div class="kv"><b>owner</b>{value_badge(c["owner"])}</div>'
+                    f'<div class="kv"><b>version</b>{value_badge(c["version"])}</div>'
+                    f'<div class="kv"><b>access_mode</b>{value_badge(c["access_mode"])}</div>'
+                    f'<div class="kv"><b>passport_id</b><span class="mono">{short(c["passport_id"])}</span></div>'
+                    f'<div class="kv"><b>provenance</b><span class="mono">{c["provenance_hash"][:12]}…</span></div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                if minted:
+                    st.button("✅ Passport minted", key=f"mint_{c['passport_id']}", disabled=True,
+                              width="stretch")
+                elif st.button("🪪 Single-Click Mint Stable ID", key=f"mint_{c['passport_id']}",
+                               type="primary", width="stretch"):
+                    pid = eng.mint_passport(c)
+                    st.session_state.restart_proof = None  # stale once the registry changes
+                    st.session_state.flash = ("success", f"Minted {c['tool_name']} → {pid}")
+                    st.rerun()
+
+        if any(len(s) > 1 for s in name_sources.values()):
+            pg = [c for c in candidates if len(name_sources[c["tool_name"]]) > 1]
+            st.warning(
+                "**No false merge.** "
+                + " vs. ".join(f"`{c['tool_name']}` @ `{c['source_path']}` → `{short(c['passport_id'])}`" for c in pg)
+                + ". Same name, different provenance, so they get different passport IDs."
+            )
+
+# ── ③ Metadata Diff & Governance ───────────────────────────────────────────────
+
+with tab3:
+    st.subheader("Step 3 · Metadata Diff & Governance Alerts")
+    demo_hint(3)
+    changed = [c for c in candidates if c.get("metadata_changed")]
+    if not st.session_state.scanned:
+        st.info("Run discovery in ① and mint `filesystem-mcp` in ② first.")
+    elif not st.session_state.v2_active:
+        st.info("Toggle **📝 Load v2 Config Update** in the sidebar to simulate an in-place config edit.")
+    elif not changed:
+        st.info("v2 is loaded, but no confirmed passport changed. Mint `filesystem-mcp` in Step 2 first, "
+                "then toggle v2 off and on again.")
+    for c in changed:
+        stored = eng.passports()[c["passport_id"]]
+        lines = []
+        for d in c["diff"]:
+            cls = "diff-add" if " added" in d else "diff-del" if (" removed" in d or "changed" in d) else ""
+            lines.append(f'<div class="mono {cls}">• {html.escape(d)}</div>')
+        reason = ""
+        if stored.get("access_mode") != c["access_mode"] and c["access_mode"] == UNKNOWN:
+            reason = (
+                f'<div style="margin-top:10px"><b>Why access_mode is now {badge("UNKNOWN", "unknown")}:</b> '
+                "the read-only evidence (<span class='mono'>,ro</span> on the bind mount) is gone from the config. "
+                "We will not assume <i>read-write</i> either, so it stays UNKNOWN until a human reviews it.</div>"
+            )
+        st.markdown(
+            f'<div class="card incident" style="border-color:#f0a060;background:#fffaf4">'
+            f'<h4>⚠ METADATA CHANGED · {html.escape(c["tool_name"])} '
+            f'<span class="mono">({short(c["passport_id"])})</span></h4>'
+            f'{badge("Same passport_id", "ok")}{badge("PENDING_REVIEW", "warn")}'
+            f'<div class="kv"><b>config_hash</b><span class="mono">{stored["config_hash"][:12]}… → '
+            f'{c["config_hash"][:12]}…</span></div>'
+            f'<div style="margin-top:8px">{"".join(lines)}</div>{reason}'
+            f'<div style="margin-top:10px;color:#555">The confirmed passport is unchanged. Drift is recorded in '
+            f'<span class="mono">data/metadata_changes.json</span>.</div></div>',
+            unsafe_allow_html=True,
+        )
+    log = eng.metadata_changes()
+    if log:
+        with st.expander(f"metadata_changes.json ({len(log)})"):
+            st.json(log)
+
+# ── ④ Consented Linking & Incidents ────────────────────────────────────────────
+
+with tab4:
+    st.subheader("Step 4 · Consented Event Linking & Incident Log")
+    demo_hint(4)
+    events = load_events()
+    passports = eng.passports()
+    if not passports:
+        st.info("No passports yet. Scan in ① and mint at least `filesystem-mcp` in ② before linking events.")
+    else:
+        left, right = st.columns([1, 1])
+        with left:
+            ev_labels = {
+                e["event_id"]: f'{e["event_id"]} · {e["source"]["server_name"]} · {e["tool_call"]} · {e["result"]}'
+                for e in events
+            }
+            ev_id = st.selectbox("Runtime event", list(ev_labels), format_func=ev_labels.get, key="ev_select")
+            event = next(e for e in events if e["event_id"] == ev_id)
+            st.json(event, expanded=False)
+        with right:
+            pids = list(passports)
+            labels = {p: f'{passports[p]["tool_name"]} @ {passports[p]["source_path"]} · {short(p)}' for p in pids}
+            match = next(
+                (p for p in pids if passports[p]["tool_name"] == event["source"]["server_name"]
+                 and passports[p]["source_path"] == event["source"]["config_path"]),
+                None,
+            )
+            if match is None:
+                st.warning(
+                    f"The passport for this event's source (`{event['source']['server_name']}` @ "
+                    f"`{event['source']['config_path']}`) is not minted yet. Mint it in ② to link this event. "
+                    "Linking to another passport will be blocked as a source mismatch."
+                )
+                match = pids[0]
+            target = st.selectbox("Target passport_id", pids, index=pids.index(match),
+                                  format_func=labels.get, key=f"target_{ev_id}")
+            consent = st.checkbox("I grant explicit consent to link this event", key=f"consent_{ev_id}")
+            if st.button("🔗 Link Event", type="primary", width="stretch"):
+                try:
+                    st.session_state.last_link = eng.link_event(event, target, user_consent=consent)
+                    st.session_state.last_error = None
+                except (PermissionError, ValueError, KeyError) as exc:
+                    st.session_state.last_link = None
+                    msg = exc.args[0] if exc.args else str(exc)
+                    st.session_state.last_error = f"{type(exc).__name__}: {msg}"
+                st.rerun()
+
+        if st.session_state.last_error:
+            st.error(f"🚫 Link blocked by engine. {st.session_state.last_error}")
+
+        link = st.session_state.last_link
+        if link:
+            appr = badge(APPROVED, "ok") if link["approval_status"] == APPROVED else badge(MISSING_APPROVAL, "bad")
+            src = link["source"] if isinstance(link["source"], dict) else {}
+            st.markdown(
+                f'<div class="card audit"><h4>🧾 Audit record · {html.escape(link["link_id"])}</h4>'
+                f'<div class="kv"><b>Event</b><span class="mono">{html.escape(link["event_id"])} · '
+                f'{html.escape(link["tool_call"])} → {html.escape(str(link["target"]))} ({html.escape(link["result"])})</span></div>'
+                f'<div class="kv"><b>Source</b><span class="mono">{html.escape(src.get("client", UNKNOWN))} · '
+                f'{html.escape(src.get("config_path", UNKNOWN))} · {html.escape(src.get("server_name", UNKNOWN))}</span></div>'
+                f'<div class="kv"><b>Timestamp</b><span class="mono">{html.escape(link["timestamp"])}</span></div>'
+                f'<div class="kv"><b>Passport</b><span class="mono">{short(link["passport_id"])}</span></div>'
+                f'<div class="kv"><b>Approval</b>{appr} {value_badge(link["approval_id"])} '
+                f'<span style="color:#555">(verified against fixtures/approvals.json)</span></div>'
+                f'<div class="kv"><b>Runtime consent</b>{value_badge(link["runtime_consent_id"])}</div>'
+                f'<div class="kv"><b>Link consent</b>{badge("GRANTED", "ok")}</div></div>',
+                unsafe_allow_html=True,
+            )
+            if INCIDENT in link["flags"]:
+                inc = next((i for i in eng.incidents() if i["incident_id"] == link["incident_id"]), None)
+                if inc:
+                    st.markdown(
+                        f'<div class="card incident"><h4 style="color:#a1161b;font-size:1.4rem">'
+                        f'🚨 INCIDENT RECORDED: Out-of-Expected-Behavior</h4>'
+                        f'<div class="kv"><b>Incident</b><span class="mono">{html.escape(inc["incident_id"])}</span></div>'
+                        f'<div class="kv"><b>Tool</b><span class="mono">{html.escape(inc["tool_name"])} '
+                        f'({short(inc["passport_id"])})</span></div>'
+                        f'<div class="kv"><b>Attempted</b><span class="mono">{html.escape(inc["tool_call"])} → '
+                        f'{html.escape(str(inc["target"]))}</span> {badge(inc["result"].upper(), "bad")}</div>'
+                        f'<div class="kv"><b>Expected</b>{badge(inc["expected_behavior"], "ok")}</div>'
+                        f'<div class="kv"><b>Approval</b>{badge(inc["approval_status"], "bad" if inc["approval_status"] != APPROVED else "ok")}</div>'
+                        f'<div class="kv"><b>Timestamp</b><span class="mono">{html.escape(inc["timestamp"])}</span></div>'
+                        f'<div style="margin-top:8px;color:#555">Written to <span class="mono">data/incidents.json</span>.</div></div>',
+                        unsafe_allow_html=True,
+                    )
+
+        st.divider()
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Linked events** · `data/linked_events.json`")
+            st.dataframe([{
+                "event": lk["event_id"], "passport": short(lk["passport_id"]), "tool_call": lk["tool_call"],
+                "timestamp": lk["timestamp"], "approval": lk["approval_status"], "flags": ", ".join(lk["flags"]) or "—",
+            } for lk in eng.linked_events()], width="stretch", hide_index=True)
+        with c2:
+            st.markdown("**Incident log** · `data/incidents.json`")
+            st.dataframe([{
+                "incident": i["incident_id"], "tool": i["tool_name"], "tool_call": i["tool_call"],
+                "timestamp": i["timestamp"], "result": i["result"],
+            } for i in eng.incidents()], width="stretch", hide_index=True)
