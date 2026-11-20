@@ -1,0 +1,45 @@
+{
+  "_comment": "Declarative policy-as-code rules. Allowed conditions: passport -> category_in, approval, field_is_unknown; change -> access_mode_transition, approval; event -> action_mutating, approval. All conditions in a rule must hold. Nothing here is executed as code.",
+  "rules": [
+    {
+      "rule_id": "POL-001",
+      "title": "Unapproved database MCP server",
+      "severity": "high",
+      "applies_to": "passport",
+      "when": {"category_in": ["database"], "approval": ["missing", "pending"]},
+      "explanation": "The server's config shows explicit database evidence (package, image or command) and approvals.json has no approved record for this passport."
+    },
+    {
+      "rule_id": "POL-002",
+      "title": "Access mode downgraded to UNKNOWN after a config edit",
+      "severity": "high",
+      "applies_to": "change",
+      "when": {"access_mode_transition": {"from": "read-only", "to": "UNKNOWN"}},
+      "explanation": "The confirmed passport had proven read-only access, but the edited config no longer carries that evidence. Access is now UNKNOWN until a human re-reviews it."
+    },
+    {
+      "rule_id": "POL-003",
+      "title": "Owner not attested",
+      "severity": "medium",
+      "applies_to": "passport",
+      "when": {"field_is_unknown": "owner"},
+      "explanation": "No owner is declared in the config. AutoDiscover will not guess one, so accountability is missing."
+    },
+    {
+      "rule_id": "POL-004",
+      "title": "Version not attested",
+      "severity": "low",
+      "applies_to": "passport",
+      "when": {"field_is_unknown": "version"},
+      "explanation": "No version is declared in the config, so the exact build in use cannot be pinned or audited."
+    },
+    {
+      "rule_id": "POL-005",
+      "title": "Mutating action without approval",
+      "severity": "critical",
+      "applies_to": "event",
+      "when": {"action_mutating": true, "approval": ["missing"]},
+      "explanation": "A consented runtime event shows a write/delete-type action that no approval record covers."
+    }
+  ]
+}

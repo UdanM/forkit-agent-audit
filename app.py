@@ -116,6 +116,21 @@ def demo_hint(step: int) -> None:
     st.caption(f"🎬 Next demo step: {DEMO_HINTS[step]}")
 
 
+SEVERITY_KIND = {"critical": "bad", "high": "bad", "medium": "warn", "low": "unknown"}
+
+
+def rule_badges(findings: list[dict[str, Any]]) -> str:
+    return "".join(
+        badge(f'{f["rule_id"]} · {f["severity"].upper()}', SEVERITY_KIND.get(f["severity"], "neutral"))
+        for f in sorted(findings, key=lambda f: f["rule_id"])
+    )
+
+
+def refresh_policies() -> None:
+    """Re-evaluate policy-as-code rules into the ACTIVE store (data/ or data/local/)."""
+    engine().evaluate_policies(st.session_state.get("candidates") or [])
+
+
 def short(pid: str) -> str:
     return pid[:12] + "…"
 
@@ -144,6 +159,7 @@ def run_discovery() -> None:
     else:
         st.session_state.candidates = engine().discover_tools(CONFIGS)
     st.session_state.scanned = True
+    refresh_policies()
 
 
 def init_state() -> None:
@@ -451,6 +467,7 @@ with tab2:
                 st.markdown(
                     f'<div class="card {"merge-warn" if collision else ""}">'
                     f'<h4>{html.escape(c["tool_name"])}</h4>{status}{changed}{warn}'
+                    f'<div style="margin:4px 0">{rule_badges(c.get("policy_findings", []))}</div>'
                     f'<div class="kv"><b>client</b>{value_badge(c["client"])}</div>'
                     f'<div class="kv"><b>source_path</b>{value_badge(c["source_path"])}</div>'
                     f'<div class="kv"><b>command</b>{value_badge(c["command"])}</div>'
@@ -468,6 +485,7 @@ with tab2:
                 elif st.button("🪪 Single-Click Mint Stable ID", key=f"mint_{c['passport_id']}",
                                type="primary", width="stretch"):
                     pid = eng.mint_passport(c)
+                    refresh_policies()
                     st.session_state.restart_proof = None  # stale once the registry changes
                     st.session_state.flash = ("success", f"Minted {c['tool_name']} → {pid}")
                     st.rerun()
@@ -527,6 +545,28 @@ with tab3:
         with st.expander(f"metadata_changes.json ({len(log)})"):
             st.json(log)
 
+    st.markdown("#### 🛡️ Policy-as-code findings")
+    st.caption("Declarative rules from `fixtures/policies.json`. Each finding lists the exact facts it used; "
+               "missing facts are never guessed.")
+    findings = eng.policy_findings()
+    if not findings:
+        st.info("No findings yet. Scan in ① to evaluate the rules.")
+    else:
+        order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        counts = {sev: sum(f["severity"] == sev for f in findings) for sev in order}
+        st.markdown(" ".join(badge(f"{n} {sev.upper()}", SEVERITY_KIND[sev]) for sev, n in counts.items() if n),
+                    unsafe_allow_html=True)
+        for f in sorted(findings, key=lambda f: (order.get(f["severity"], 9), f["rule_id"], f["subject_id"])):
+            ev = ", ".join(f"{k}={v}" for k, v in f["evidence"].items())
+            st.markdown(
+                f'<div class="card"><h4>{rule_badges([f])} {html.escape(f["title"])}</h4>'
+                f'<div class="kv"><b>Tool</b><span class="mono">{html.escape(f["tool_name"])} '
+                f'({short(f["passport_id"])}) · {html.escape(f["subject_type"])}</span></div>'
+                f'<div class="kv"><b>Evidence</b><span class="mono">{html.escape(ev)}</span></div>'
+                f'<div style="color:#555;margin-top:4px">{html.escape(f["explanation"])}</div></div>',
+                unsafe_allow_html=True,
+            )
+
 # ── ④ Consented Linking & Incidents ────────────────────────────────────────────
 
 with tab4:
@@ -570,6 +610,7 @@ with tab4:
             if st.button("🔗 Link Event", type="primary", width="stretch"):
                 try:
                     st.session_state.last_link = eng.link_event(event, target, user_consent=consent)
+                    refresh_policies()
                     st.session_state.last_error = None
                 except (PermissionError, ValueError, KeyError) as exc:
                     st.session_state.last_link = None
@@ -595,7 +636,10 @@ with tab4:
                 f'<div class="kv"><b>Approval</b>{appr} {value_badge(link["approval_id"])} '
                 f'<span style="color:#555">(verified against fixtures/approvals.json)</span></div>'
                 f'<div class="kv"><b>Runtime consent</b>{value_badge(link["runtime_consent_id"])}</div>'
-                f'<div class="kv"><b>Link consent</b>{badge("GRANTED", "ok")}</div></div>',
+                f'<div class="kv"><b>Link consent</b>{badge("GRANTED", "ok")}</div>'
+                f'<div class="kv"><b>Policy</b>'
+                f'{"".join(badge(r, "bad") for r in link.get("policy_flags", [])) or badge("no rule violated", "ok")}'
+                f'</div></div>',
                 unsafe_allow_html=True,
             )
             if INCIDENT in link["flags"]:

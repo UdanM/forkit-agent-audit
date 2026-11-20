@@ -76,6 +76,33 @@ them `⚠ SAME NAME — DO NOT MERGE: Different Provenance`.
   a mutating action (`write`, `delete`, `move`, …). This is recorded even if the action was denied,
   because the attempt is the signal.
 
+### 6. Policy-as-code guardrails
+Rules live in [`fixtures/policies.json`](fixtures/policies.json) as declarative JSON. Nothing in that file
+is ever executed. Each rule's `when` block may only use an allowlisted condition, and all conditions must hold:
+
+| Rule kind | Allowed conditions |
+|---|---|
+| `passport` | `category_in`, `approval`, `field_is_unknown` |
+| `change` | `access_mode_transition`, `approval` |
+| `event` | `action_mutating`, `approval` |
+
+The loader raises an error for any unknown condition, bad severity or misplaced condition, instead of
+skipping the rule. Shipped rules:
+
+| Rule | Severity | Fires when |
+|---|---|---|
+| `POL-001` | high | A database MCP server (by explicit package, image or command evidence) has no approved record |
+| `POL-002` | high | A config edit drops access mode from `read-only` to `UNKNOWN` |
+| `POL-003` | medium | Owner is `UNKNOWN` (missing attestation) |
+| `POL-004` | low | Version is `UNKNOWN` (missing attestation) |
+| `POL-005` | critical | A consented event shows a write/delete-type action with no approval |
+
+A tool is only treated as a database when its command or package args say so (for example
+`@modelcontextprotocol/server-postgres` or `mcp/postgres`). Filesystem paths are never used as evidence,
+and without evidence the category is `UNKNOWN`, so `POL-001` cannot fire on a guess. Every finding records
+the exact facts it used. Findings are saved to `policy_findings.json` in the active store (`data/` for the
+demo, `data/local/` for real-machine mode) and never written into `passports.json`.
+
 ---
 
 ## Architecture & data boundary
@@ -103,7 +130,7 @@ them `⚠ SAME NAME — DO NOT MERGE: Different Provenance`.
 - **`data/passports.json` is effectively append-only.** `mint_passport` returns the existing ID if the
   passport already exists and never overwrites it. Tests assert the file is byte-identical after a
   restart re-scan, a config change, and event linking.
-- Drift, approvals, event links and incidents live in **separate JSON records** joined by `passport_id`,
+- Drift, approvals, event links, incidents and policy findings (`policy_findings.json`) live in **separate JSON records** joined by `passport_id`,
   following Forkit Core's identity spec (§2.1): application metadata stays outside the identity material.
 - Writes are atomic (temp file plus `os.replace`), so an interrupted demo never corrupts the registry.
 
@@ -116,8 +143,8 @@ Requires Python 3.10+. Run everything from the repository root.
 ```bash
 pip install -r requirements.txt
 
-# Acceptance tests (6) + real-machine discovery tests (12)
-python -m pytest tests/test_acceptance.py tests/test_local_discovery.py -v
+# Acceptance (6) + real-machine discovery (12) + policy-as-code (17) tests
+python -m pytest tests/test_acceptance.py tests/test_local_discovery.py tests/test_policies.py -v
 
 # Live demo
 streamlit run app.py

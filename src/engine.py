@@ -58,6 +58,9 @@ __all__ = [
     "derive_passport_id",
     "known_config_locations",
     "scan_local_machine",
+    "load_policies",
+    "category_evidence",
+    "evaluate_policies",
     "AutoDiscoverEngine",
 ]
 
@@ -423,6 +426,218 @@ def _write_json(path: Path, data: Any) -> None:
     os.replace(tmp, path)
 
 
+# ── Policy-as-code ─────────────────────────────────────────────────────────────
+#
+# Rules are declarative JSON (fixtures/policies.json). Nothing in a policy file
+# is executed: each `when` key must be one of the allowlisted conditions below,
+# and every condition must be valid for the rule's subject kind. All conditions
+# in a rule are ANDed. A rule never fires on a guessed fact: category comes only
+# from explicit package / image / command evidence, otherwise it is UNKNOWN.
+
+SEVERITIES = ("low", "medium", "high", "critical")
+APPROVAL_STATES = ("approved", "pending", "missing")
+_CONDITIONS: dict[str, set[str]] = {
+    "passport": {"category_in", "approval", "field_is_unknown"},
+    "change": {"access_mode_transition", "approval"},
+    "event": {"action_mutating", "approval"},
+}
+_UNKNOWN_FIELDS = {"owner", "version", "access_mode", "client", "command"}
+
+# category → evidence patterns, matched only against the command and package-like
+# args (never against filesystem paths, which could contain any word).
+_CATEGORY_EVIDENCE: dict[str, re.Pattern[str]] = {
+    "database": re.compile(
+        r"(^|[/@:_-])(postgres(ql)?|pg|mysql|mariadb|sqlite3?|mongo(db)?|redis|mssql|sqlserver)([/@:_.-]|$)",
+        re.IGNORECASE,
+    ),
+}
+
+
+def load_policies(path: str | Path) -> list[dict[str, Any]]:
+    """Load and strictly validate a policy file. Missing file → no rules.
+
+    Raises ValueError on any malformed rule instead of silently skipping it.
+    """
+    p = Path(path)
+    if not p.exists():
+        return []
+    rules = json.loads(p.read_text(encoding="utf-8")).get("rules")
+    if not isinstance(rules, list):
+        raise ValueError("policy file must contain a 'rules' list")
+    seen: set[str] = set()
+    for i, r in enumerate(rules):
+        where = f"rule #{i} ({r.get('rule_id', '?') if isinstance(r, dict) else '?'})"
+        if not isinstance(r, dict):
+            raise ValueError(f"{where}: must be an object")
+        for key in ("rule_id", "title", "severity", "applies_to", "when", "explanation"):
+            if key not in r:
+                raise ValueError(f"{where}: missing '{key}'")
+        if r["rule_id"] in seen:
+            raise ValueError(f"{where}: duplicate rule_id")
+        seen.add(r["rule_id"])
+        if r["severity"] not in SEVERITIES:
+            raise ValueError(f"{where}: severity must be one of {SEVERITIES}")
+        if r["applies_to"] not in _CONDITIONS:
+            raise ValueError(f"{where}: applies_to must be one of {sorted(_CONDITIONS)}")
+        when = r["when"]
+        if not isinstance(when, dict) or not when:
+            raise ValueError(f"{where}: 'when' must be a non-empty object")
+        allowed = _CONDITIONS[r["applies_to"]]
+        for cond, val in when.items():
+            if cond not in allowed:
+                raise ValueError(f"{where}: condition '{cond}' is not allowed for {r['applies_to']} rules "
+                                 f"(allowed: {sorted(allowed)})")
+            if cond == "category_in" and (not isinstance(val, list) or not set(val) <= set(_CATEGORY_EVIDENCE)):
+                raise ValueError(f"{where}: category_in must list known categories {sorted(_CATEGORY_EVIDENCE)}")
+            if cond == "approval" and (not isinstance(val, list) or not set(val) <= set(APPROVAL_STATES)):
+                raise ValueError(f"{where}: approval must list states from {APPROVAL_STATES}")
+            if cond == "field_is_unknown" and val not in _UNKNOWN_FIELDS:
+                raise ValueError(f"{where}: field_is_unknown must be one of {sorted(_UNKNOWN_FIELDS)}")
+            if cond == "access_mode_transition" and (
+                not isinstance(val, dict) or set(val) != {"from", "to"}
+            ):
+                raise ValueError(f"{where}: access_mode_transition needs exactly 'from' and 'to'")
+            if cond == "action_mutating" and not isinstance(val, bool):
+                raise ValueError(f"{where}: action_mutating must be true or false")
+    return rules
+
+
+def _looks_like_path(arg: str) -> bool:
+    return arg.startswith(("/", "~", ".", "\\")) or "src=" in arg or (len(arg) > 2 and arg[1] == ":")
+
+
+def category_evidence(record: dict[str, Any]) -> tuple[str, str | None]:
+    """Return (category, evidence) from explicit command/package evidence only."""
+    tokens = [str(record.get("command") or "")] + [
+        a for a in record.get("args", []) if not _looks_like_path(a) and not a.startswith("-")
+    ]
+    for category, pattern in _CATEGORY_EVIDENCE.items():
+        for tok in tokens:
+            if tok and tok != UNKNOWN and pattern.search(tok):
+                return category, tok
+    return UNKNOWN, None
+
+
+def _approval_state(passport_id: str, approvals: list[dict[str, Any]]) -> tuple[str, str | None]:
+    records = [a for a in approvals if a.get("passport_id") == passport_id]
+    if any(str(a.get("status", "")).lower() == "approved" for a in records):
+        return "approved", next(a.get("approval_id") for a in records if str(a.get("status")).lower() == "approved")
+    if records:
+        return "pending", records[0].get("approval_id")
+    return "missing", None
+
+
+def _finding(rule: dict[str, Any], subject_type: str, subject_id: str, passport_id: str,
+             tool_name: str, evidence: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "finding_id": "fnd-" + HashEngine.hash_dict({"r": rule["rule_id"], "s": subject_id, "e": evidence})[:12],
+        "rule_id": rule["rule_id"],
+        "title": rule["title"],
+        "severity": rule["severity"],
+        "subject_type": subject_type,
+        "subject_id": subject_id,
+        "passport_id": passport_id,
+        "tool_name": tool_name,
+        "evidence": evidence,
+        "explanation": rule["explanation"],
+    }
+
+
+def _eval_passport(rule: dict[str, Any], rec: dict[str, Any], approvals: list[dict[str, Any]]) -> dict | None:
+    evidence: dict[str, Any] = {}
+    for cond, val in rule["when"].items():
+        if cond == "category_in":
+            cat, ev = category_evidence(rec)
+            if cat not in val:
+                return None
+            evidence.update(category=cat, category_evidence=ev)
+        elif cond == "approval":
+            state, appr_id = _approval_state(rec["passport_id"], approvals)
+            if state not in val:
+                return None
+            evidence.update(approval=state, approval_id=appr_id or UNKNOWN)
+        elif cond == "field_is_unknown":
+            if rec.get(val, UNKNOWN) != UNKNOWN:
+                return None
+            evidence[val] = UNKNOWN
+    return evidence
+
+
+def _eval_change(rule: dict[str, Any], old: dict[str, Any], new: dict[str, Any],
+                 approvals: list[dict[str, Any]]) -> dict | None:
+    evidence: dict[str, Any] = {}
+    for cond, val in rule["when"].items():
+        if cond == "access_mode_transition":
+            if (old.get("access_mode"), new.get("access_mode")) != (val["from"], val["to"]):
+                return None
+            evidence.update(access_mode_before=old.get("access_mode"), access_mode_after=new.get("access_mode"),
+                            config_hash_before=old.get("config_hash"), config_hash_after=new.get("config_hash"))
+        elif cond == "approval":
+            state, appr_id = _approval_state(new["passport_id"], approvals)
+            if state not in val:
+                return None
+            evidence.update(approval=state, approval_id=appr_id or UNKNOWN)
+    return evidence
+
+
+def _eval_event(rule: dict[str, Any], link: dict[str, Any]) -> dict | None:
+    evidence: dict[str, Any] = {}
+    for cond, val in rule["when"].items():
+        if cond == "action_mutating":
+            tool_call = link.get("tool_call", UNKNOWN)
+            if tool_call == UNKNOWN or _is_mutating(tool_call) != val:
+                return None
+            evidence.update(tool_call=tool_call)
+        elif cond == "approval":
+            state = "approved" if link.get("approval_status") == APPROVED else "missing"
+            if state not in val:
+                return None
+            evidence.update(approval=state, approval_id=link.get("approval_id", UNKNOWN))
+    evidence.update(event_id=link.get("event_id", UNKNOWN), timestamp=link.get("timestamp", UNKNOWN))
+    return evidence
+
+
+def evaluate_policies(
+    rules: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+    passports: dict[str, dict[str, Any]],
+    approvals: list[dict[str, Any]],
+    links: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Pure rule evaluation. Returns explainable findings; writes nothing.
+
+    Passport rules run on the current view of every tool: the fresh candidate
+    when it was just scanned, otherwise the confirmed passport. Change rules
+    compare a confirmed passport with a drifted candidate. Event rules run on
+    consented event links.
+    """
+    view = dict(passports)
+    view.update({c["passport_id"]: c for c in candidates})
+    findings: list[dict[str, Any]] = []
+    for rule in rules:
+        kind = rule["applies_to"]
+        if kind == "passport":
+            for pid, rec in sorted(view.items()):
+                ev = _eval_passport(rule, rec, approvals)
+                if ev is not None:
+                    findings.append(_finding(rule, "passport", pid, pid, rec["tool_name"], ev))
+        elif kind == "change":
+            for cand in candidates:
+                old = passports.get(cand["passport_id"])
+                if old and old.get("config_hash") != cand.get("config_hash"):
+                    ev = _eval_change(rule, old, cand, approvals)
+                    if ev is not None:
+                        findings.append(_finding(rule, "change", f"{cand['passport_id']}@{cand['config_hash']}",
+                                                 cand["passport_id"], cand["tool_name"], ev))
+        elif kind == "event":
+            for link in links or []:
+                ev = _eval_event(rule, link)
+                if ev is not None:
+                    tool = passports.get(link["passport_id"], {}).get("tool_name", UNKNOWN)
+                    findings.append(_finding(rule, "event", link["link_id"], link["passport_id"], tool, ev))
+    return findings
+
+
 # ── Engine ─────────────────────────────────────────────────────────────────────
 
 class AutoDiscoverEngine:
@@ -433,6 +648,7 @@ class AutoDiscoverEngine:
       linked_events.json     [link]                    consented event links
       incidents.json         [incident]                out-of-expected-behaviour
       metadata_changes.json  [change]                  config drift on known tools
+      policy_findings.json   [finding]                 policy-as-code results
     """
 
     def __init__(
@@ -440,10 +656,13 @@ class AutoDiscoverEngine:
         data_dir: str | Path = "data",
         base_dir: str | Path = ".",
         approvals_path: str | Path = "fixtures/approvals.json",
+        policies_path: str | Path | None = None,
     ) -> None:
         self.base_dir = Path(base_dir)
         self.data_dir = Path(data_dir)
         self.approvals_path = Path(approvals_path)
+        # Policies sit next to approvals unless given explicitly.
+        self.policies_path = Path(policies_path) if policies_path else self.approvals_path.parent / "policies.json"
         self.passports_path = self.data_dir / "passports.json"
         self.links_path = self.data_dir / "linked_events.json"
         self.incidents_path = self.data_dir / "incidents.json"
@@ -465,6 +684,12 @@ class AutoDiscoverEngine:
 
     def approvals(self) -> list[dict[str, Any]]:
         return _read_json(self.approvals_path, {"approvals": []}).get("approvals", [])
+
+    def policies(self) -> list[dict[str, Any]]:
+        return load_policies(self.policies_path)
+
+    def policy_findings(self, store_dir: str | Path | None = None) -> list[dict[str, Any]]:
+        return _read_json(Path(store_dir or self.data_dir) / "policy_findings.json", [])
 
     # ── 1. Discovery ───────────────────────────────────────────────────────────
 
@@ -512,7 +737,39 @@ class AutoDiscoverEngine:
                 seen.add((cand["passport_id"], cand["config_hash"]))
                 _write_json(self.changes_path, changes)
             out.append(cand)
+        # In-memory policy annotation (persisted only via evaluate_policies()).
+        findings = evaluate_policies(self.policies(), out, stored, self.approvals())
+        for cand in out:
+            cand["policy_findings"] = [f for f in findings if f["passport_id"] == cand["passport_id"]]
         return out
+
+    # ── Policy evaluation (persisted) ──────────────────────────────────────────
+
+    def evaluate_policies(
+        self,
+        candidates: list[dict[str, Any]] | None = None,
+        store_dir: str | Path | None = None,
+    ) -> list[dict[str, Any]]:
+        """Evaluate all rules and save the current findings to the active store.
+
+        ``store_dir`` defaults to this engine's data_dir, so demo mode writes
+        data/policy_findings.json and real-machine mode data/local/... .
+        The saved file is a snapshot of the current findings; a finding that
+        was already present keeps its first_detected_at. passports.json is
+        only read, never written.
+        """
+        store = Path(store_dir or self.data_dir)
+        path = store / "policy_findings.json"
+        stored = _read_json(store / "passports.json", {})
+        links = _read_json(store / "linked_events.json", [])
+        findings = evaluate_policies(self.policies(), candidates or [], stored, self.approvals(), links)
+        previous = {f["finding_id"]: f for f in _read_json(path, [])}
+        now = _now()
+        for f in findings:
+            f["first_detected_at"] = previous.get(f["finding_id"], {}).get("first_detected_at", now)
+            f["last_evaluated_at"] = now
+        _write_json(path, findings)
+        return findings
 
     # ── 2. Minting ─────────────────────────────────────────────────────────────
 
@@ -528,7 +785,7 @@ class AutoDiscoverEngine:
         stored = self.passports()
         if pid in stored:
             return pid
-        record = {k: v for k, v in candidate.items() if k not in {"known", "metadata_changed", "diff"}}
+        record = {k: v for k, v in candidate.items() if k not in {"known", "metadata_changed", "diff", "policy_findings"}}
         record["status"] = "CONFIRMED"
         record["confirmed_at"] = _now()
         stored[pid] = record
@@ -615,6 +872,11 @@ class AutoDiscoverEngine:
             "flags": flags,
             "incident_id": incident["incident_id"] if incident else None,
         }
+        link["policy_flags"] = sorted({
+            f["rule_id"] for f in evaluate_policies(
+                [r for r in self.policies() if r["applies_to"] == "event"], [], {}, [], [link]
+            )
+        })
         links.append(link)
         _write_json(self.links_path, links)
         if incident:
