@@ -38,6 +38,7 @@ import difflib
 import json
 import os
 import re
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -55,6 +56,8 @@ __all__ = [
     "INCIDENT",
     "discover_tools",
     "derive_passport_id",
+    "known_config_locations",
+    "scan_local_machine",
     "AutoDiscoverEngine",
 ]
 
@@ -180,6 +183,58 @@ def derive_passport_id(source_path: str, tool_name: str, command: str) -> str:
     )
 
 
+def _candidates_from_config(
+    data: Any, source_path: str, client: str, home: str | None = None
+) -> list[dict[str, Any]]:
+    """Turn one parsed MCP config into redacted candidate records.
+
+    Accepts both the Claude Desktop / Cursor shape (``mcpServers``) and the
+    VS Code shape (``servers``). When ``home`` is given, the user's home
+    directory is masked as ``~`` in command, args and url so OS usernames never
+    reach the inventory.
+    """
+    if not isinstance(data, dict):
+        raise ValueError("config root is not a JSON object")
+    servers = data.get("mcpServers")
+    if servers is None:
+        servers = data.get("servers")
+    if not isinstance(servers, dict):
+        servers = {}
+
+    def mask(value: str) -> str:
+        return _mask_home(value, home) if home else value
+
+    candidates: list[dict[str, Any]] = []
+    for tool_name, spec in sorted(servers.items()):
+        spec = spec if isinstance(spec, dict) else {}
+        command = mask(str(spec.get("command") or UNKNOWN))
+        args = [mask(a) for a in _redact_args(list(spec.get("args") or []))]
+        env = _redact_mapping(spec.get("env"))
+        record: dict[str, Any] = {
+            "passport_id": derive_passport_id(source_path, tool_name, command),
+            "passport_type": PASSPORT_TYPE,
+            "tool_name": tool_name,
+            "source_path": source_path,
+            "client": client,
+            "command": command,
+            "args": args,
+            "env": env,
+            "owner": str(spec["owner"]) if spec.get("owner") else UNKNOWN,
+            "version": str(spec["version"]) if spec.get("version") else UNKNOWN,
+            "access_mode": _access_mode(args),
+        }
+        if spec.get("url"):
+            record["url"] = mask(_redact_string(str(spec["url"])))
+        if spec.get("headers"):
+            record["headers"] = _redact_mapping(spec["headers"])
+        record["provenance_hash"] = _provenance_hash(source_path, tool_name, command)
+        record["config_hash"] = HashEngine.hash_config(
+            {k: record.get(k) for k in ("command", "args", "env", "url", "headers")}
+        )
+        candidates.append(record)
+    return candidates
+
+
 def discover_tools(config_paths: list[str | Path], base_dir: str | Path = ".") -> list[dict[str, Any]]:
     """Parse MCP config files into redacted, metadata-only candidate records."""
     base = Path(base_dir)
@@ -187,36 +242,133 @@ def discover_tools(config_paths: list[str | Path], base_dir: str | Path = ".") -
     for cfg in config_paths:
         cfg_path = Path(cfg) if Path(cfg).is_absolute() else base / cfg
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
-        source_path = _source_path(cfg_path, base)
-        client = _KNOWN_CLIENTS.get(cfg_path.name, UNKNOWN)
-        for tool_name, spec in sorted((data.get("mcpServers") or {}).items()):
-            spec = spec or {}
-            command = str(spec.get("command") or UNKNOWN)
-            args = _redact_args(list(spec.get("args") or []))
-            env = _redact_mapping(spec.get("env"))
-            record: dict[str, Any] = {
-                "passport_id": derive_passport_id(source_path, tool_name, command),
-                "passport_type": PASSPORT_TYPE,
-                "tool_name": tool_name,
-                "source_path": source_path,
-                "client": client,
-                "command": command,
-                "args": args,
-                "env": env,
-                "owner": str(spec["owner"]) if spec.get("owner") else UNKNOWN,
-                "version": str(spec["version"]) if spec.get("version") else UNKNOWN,
-                "access_mode": _access_mode(args),
-            }
-            if spec.get("url"):
-                record["url"] = _redact_string(str(spec["url"]))
-            if spec.get("headers"):
-                record["headers"] = _redact_mapping(spec["headers"])
-            record["provenance_hash"] = _provenance_hash(source_path, tool_name, command)
-            record["config_hash"] = HashEngine.hash_config(
-                {k: record.get(k) for k in ("command", "args", "env", "url", "headers")}
-            )
-            candidates.append(record)
+        candidates += _candidates_from_config(
+            data, _source_path(cfg_path, base), _KNOWN_CLIENTS.get(cfg_path.name, UNKNOWN)
+        )
     return candidates
+
+
+# ── Real local machine discovery ───────────────────────────────────────────────
+
+def _mask_home(value: str, home: str) -> str:
+    """Replace the user's home directory with ``~`` (both slash styles)."""
+    h = home.rstrip("/\\")
+    if not h:
+        return value
+    out = value
+    for variant in {h, h.replace("\\", "/"), h.replace("/", "\\")}:
+        out = out.replace(variant, "~")
+    return out
+
+
+def _normalize_platform(platform: str | None) -> str:
+    p = (platform or sys.platform).lower()
+    if p.startswith("win"):
+        return "windows"
+    if p.startswith("darwin") or p.startswith("mac"):
+        return "macos"
+    return "linux"
+
+
+# (client, base token, path parts under it). Tokens are what we store in the
+# inventory instead of the real absolute path, so IDs are stable per location
+# and usernames are never persisted.
+_LOCATIONS: dict[str, list[tuple[str, str, tuple[str, ...]]]] = {
+    "windows": [
+        ("claude-desktop", "%APPDATA%", ("Claude", "claude_desktop_config.json")),
+        ("cursor", "%USERPROFILE%", (".cursor", "mcp.json")),
+        ("vscode", "%APPDATA%", ("Code", "User", "mcp.json")),
+    ],
+    "macos": [
+        ("claude-desktop", "~", ("Library", "Application Support", "Claude", "claude_desktop_config.json")),
+        ("cursor", "~", (".cursor", "mcp.json")),
+        ("vscode", "~", ("Library", "Application Support", "Code", "User", "mcp.json")),
+    ],
+    "linux": [
+        ("claude-desktop", "~", (".config", "Claude", "claude_desktop_config.json")),
+        ("cursor", "~", (".cursor", "mcp.json")),
+        ("vscode", "~", (".config", "Code", "User", "mcp.json")),
+    ],
+}
+
+
+def known_config_locations(
+    platform: str | None = None,
+    home: str | Path | None = None,
+    env: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Resolve the well-known MCP config locations for a platform.
+
+    Pure: platform, home and env are injectable so tests can point at a fake
+    home on any OS. Each entry has ``client``, ``label`` (normalized, no
+    username, used as source_path) and ``path`` (real Path, or None when the
+    base cannot be resolved, e.g. %APPDATA% unset).
+    """
+    plat = _normalize_platform(platform)
+    env = dict(os.environ if env is None else env)
+    home_path = Path(home) if home is not None else Path.home()
+    bases = {
+        "~": home_path,
+        "%APPDATA%": Path(env["APPDATA"]) if env.get("APPDATA") else None,
+        "%USERPROFILE%": Path(env["USERPROFILE"]) if env.get("USERPROFILE") else home_path,
+    }
+    out = []
+    for client, token, parts in _LOCATIONS[plat]:
+        base = bases[token]
+        out.append({
+            "client": client,
+            "label": "/".join((token, *parts)),
+            "path": base.joinpath(*parts) if base is not None else None,
+        })
+    return out
+
+
+def _safe_error(exc: BaseException) -> str:
+    """Error text without the file path (which would contain the username)."""
+    detail = getattr(exc, "strerror", None) or (exc.msg if isinstance(exc, json.JSONDecodeError) else "")
+    return f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__
+
+
+def scan_local_machine(
+    platform: str | None = None,
+    home: str | Path | None = None,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Read-only scan of this machine's MCP configs. Never raises for a bad file.
+
+    Returns a summary with one row per known location (status: found, missing,
+    unresolved, unreadable, invalid_json, invalid_format) and the redacted
+    candidates from every readable config.
+    """
+    plat = _normalize_platform(platform)
+    home_str = str(home if home is not None else Path.home())
+    locations: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
+    for loc in known_config_locations(platform, home, env):
+        row = {"client": loc["client"], "location": loc["label"], "status": "missing", "servers": 0, "error": None}
+        path: Path | None = loc["path"]
+        try:
+            if path is None:
+                row["status"] = "unresolved"
+            elif path.exists():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                found = _candidates_from_config(data, loc["label"], loc["client"], home=home_str)
+                candidates += found
+                row.update(status="found", servers=len(found))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            row.update(status="invalid_json", error=_safe_error(exc))
+        except OSError as exc:
+            row.update(status="unreadable", error=_safe_error(exc))
+        except ValueError as exc:
+            row.update(status="invalid_format", error=str(exc))
+        locations.append(row)
+    return {
+        "platform": plat,
+        "scanned_at": _now(),
+        "locations": locations,
+        "configs_found": sum(r["status"] == "found" for r in locations),
+        "candidates": candidates,
+    }
 
 
 # ── Human-readable diff ────────────────────────────────────────────────────────
@@ -323,11 +475,25 @@ class AutoDiscoverEngine:
         with a human-readable ``diff`` when a known tool's config_hash moved.
         Drift is appended to metadata_changes.json; the passport is untouched.
         """
+        return self._annotate(discover_tools(config_paths, self.base_dir))
+
+    def scan_local_machine(
+        self,
+        platform: str | None = None,
+        home: str | Path | None = None,
+        env: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Real-machine scan, annotated against this engine's own registry."""
+        summary = scan_local_machine(platform, home, env)
+        summary["candidates"] = self._annotate(summary["candidates"])
+        return summary
+
+    def _annotate(self, found: list[dict[str, Any]]) -> list[dict[str, Any]]:
         stored = self.passports()
         changes = self.metadata_changes()
         seen = {(c["passport_id"], c["new_config_hash"]) for c in changes}
         out: list[dict[str, Any]] = []
-        for cand in discover_tools(config_paths, self.base_dir):
+        for cand in found:
             existing = stored.get(cand["passport_id"])
             cand["known"] = existing is not None
             cand["metadata_changed"] = bool(existing and existing["config_hash"] != cand["config_hash"])

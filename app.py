@@ -32,6 +32,7 @@ from src.engine import (
     REDACTED,
     UNKNOWN,
     AutoDiscoverEngine,
+    known_config_locations,
 )
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ ROOT = Path(__file__).resolve().parent
 FIXTURES = ROOT / "fixtures"
 DATA = ROOT / "data"
 LIVE = DATA / "live_configs"                 # base_dir for discovery
+LOCAL_DATA = DATA / "local"                  # isolated registry for real-machine scans
 LIVE_FIXTURES = LIVE / "fixtures"
 CLAUDE = "fixtures/claude_desktop_config.json"
 CURSOR = "fixtures/cursor_mcp.json"
@@ -104,7 +106,13 @@ DEMO_HINTS = {
 }
 
 
+def real_mode() -> bool:
+    return st.session_state.get("mode") == "real"
+
+
 def demo_hint(step: int) -> None:
+    if real_mode():
+        return
     st.caption(f"🎬 Next demo step: {DEMO_HINTS[step]}")
 
 
@@ -123,11 +131,18 @@ def restore_live_configs(v2: bool) -> None:
 
 
 def engine() -> AutoDiscoverEngine:
+    if real_mode():
+        return AutoDiscoverEngine(data_dir=LOCAL_DATA, base_dir=ROOT, approvals_path=APPROVALS_FILE)
     return AutoDiscoverEngine(data_dir=DATA, base_dir=LIVE, approvals_path=APPROVALS_FILE)
 
 
 def run_discovery() -> None:
-    st.session_state.candidates = engine().discover_tools(CONFIGS)
+    if real_mode():
+        summary = engine().scan_local_machine()     # read-only; never raises for a bad file
+        st.session_state.scan_summary = summary
+        st.session_state.candidates = summary["candidates"]
+    else:
+        st.session_state.candidates = engine().discover_tools(CONFIGS)
     st.session_state.scanned = True
 
 
@@ -140,6 +155,8 @@ def init_state() -> None:
         "last_error": None,
         "restart_proof": None,
         "flash": None,
+        "mode": "demo",
+        "scan_summary": None,
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
@@ -152,19 +169,29 @@ def load_events() -> list[dict[str, Any]]:
 
 
 def raw_secret_values() -> list[str]:
-    """Raw env values from the live configs — used only to prove none hit disk."""
+    """Raw env/header values from the scanned configs, held in memory only to prove none hit disk."""
+    if real_mode():
+        paths = [loc["path"] for loc in known_config_locations() if loc["path"] is not None]
+    else:
+        paths = [LIVE / cfg for cfg in CONFIGS]
     values: list[str] = []
-    for cfg in CONFIGS:
-        data = json.loads((LIVE / cfg).read_text())
-        for spec in (data.get("mcpServers") or {}).values():
-            values += [str(v) for v in (spec.get("env") or {}).values() if v]
+    for path in paths:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        servers = (data.get("mcpServers") or data.get("servers") or {}) if isinstance(data, dict) else {}
+        for spec in servers.values():
+            if isinstance(spec, dict):
+                for key in ("env", "headers"):
+                    values += [str(v) for v in (spec.get(key) or {}).values() if v]
     return values
 
 
 def leaked_secrets() -> list[str]:
     secrets = raw_secret_values()
     leaks = []
-    for f in DATA.glob("*.json"):
+    for f in engine().data_dir.glob("*.json"):
         text = f.read_text()
         leaks += [f.name for s in secrets if s and s in text]
     return leaks
@@ -180,7 +207,33 @@ with st.sidebar:
     st.caption("Zero-touch AI onboarding & passports · built on Forkit Core `compute_id`")
     st.divider()
 
-    if st.button("🧹 1-Click Reset Demo State", width="stretch", type="primary"):
+    mode_labels = {"demo": "🎭 Demo fixtures (default)", "real": "💻 Scan Real Local Machine"}
+    picked = st.radio("Discovery mode", list(mode_labels), format_func=mode_labels.get,
+                      index=list(mode_labels).index(st.session_state.mode))
+    if picked != st.session_state.mode:
+        tab = st.session_state.get("active_tab")
+        st.session_state.clear()
+        st.session_state.mode = picked
+        if tab:
+            st.session_state.active_tab = tab
+        restore_live_configs(v2=False)
+        st.session_state.flash = (
+            "info",
+            "Real-machine mode: read-only scan of this computer's MCP configs. Results go to an isolated "
+            "registry in `data/local/`. Usernames are masked as `~` and secrets are redacted."
+            if picked == "real" else "Back to the deterministic demo fixtures.",
+        )
+        st.rerun()
+
+    if real_mode():
+        if st.button("🧹 Clear Local Scan Registry", width="stretch", type="primary"):
+            for f in LOCAL_DATA.glob("*.json"):
+                f.unlink()
+            st.session_state.clear()
+            st.session_state.mode = "real"
+            st.session_state.flash = ("success", "Local scan registry in `data/local/` cleared.")
+            st.rerun()
+    elif st.button("🧹 1-Click Reset Demo State", width="stretch", type="primary"):
         for f in DATA.glob("*.json"):
             f.unlink()
         shutil.rmtree(LIVE, ignore_errors=True)
@@ -192,9 +245,11 @@ with st.sidebar:
     if st.button("🔄 Simulate Restart", width="stretch"):
         before = {c["passport_id"] for c in st.session_state.candidates}
         v2 = st.session_state.v2_active
+        mode = st.session_state.mode
         tab = st.session_state.get("active_tab")
         st.session_state.clear()                       # wipe ALL in-memory state
         st.session_state.v2_active = v2                # config on disk did not change
+        st.session_state.mode = mode
         if tab:
             st.session_state.active_tab = tab          # UI nicety only, not engine state
         run_discovery()                                # re-scan against saved registry
@@ -208,12 +263,12 @@ with st.sidebar:
         }
         st.rerun()
 
-    v2_toggle = st.toggle(
+    v2_toggle = False if real_mode() else st.toggle(
         "📝 Load v2 Config Update",
         value=st.session_state.v2_active,
         help="Simulates editing claude_desktop_config.json in place with the v2 contents.",
     )
-    if v2_toggle != st.session_state.v2_active:
+    if not real_mode() and v2_toggle != st.session_state.v2_active:
         st.session_state.v2_active = v2_toggle
         restore_live_configs(v2=v2_toggle)
         run_discovery()
@@ -240,8 +295,12 @@ with st.sidebar:
     st.metric("Confirmed passports", len(passports))
     st.metric("Linked events", len(eng.linked_events()))
     st.metric("Incidents", len(eng.incidents()))
-    st.caption(f"Config mode: **{'v2 (edited)' if st.session_state.v2_active else 'v1 (original)'}**")
-    st.caption("Source of truth: `data/passports.json`")
+    if real_mode():
+        st.caption("Config mode: **real local machine**")
+        st.caption("Source of truth: `data/local/passports.json`")
+    else:
+        st.caption(f"Config mode: **{'v2 (edited)' if st.session_state.v2_active else 'v1 (original)'}**")
+        st.caption("Source of truth: `data/passports.json`")
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 
@@ -293,15 +352,34 @@ candidates: list[dict[str, Any]] = st.session_state.candidates
 with tab1:
     st.subheader("Step 1 · Local Discovery (Metadata-Only)")
     demo_hint(1)
-    st.caption("Scans local MCP configs: " + ", ".join(f"`{c}`" for c in CONFIGS))
-    if st.button("🔍 Scan Local MCP Configs", type="primary"):
+    if real_mode():
+        st.caption("Read-only scan of the well-known Claude Desktop, Cursor and VS Code MCP config locations "
+                   "on this computer. Nothing is written to those files.")
+        scan_label = "💻 Scan Real Local Machine"
+    else:
+        st.caption("Scans local MCP configs: " + ", ".join(f"`{c}`" for c in CONFIGS))
+        scan_label = "🔍 Scan Local MCP Configs"
+    if st.button(scan_label, type="primary"):
         run_discovery()
         st.session_state.restart_proof = None
         st.rerun()
 
+    summary = st.session_state.scan_summary
+    if real_mode() and st.session_state.scanned and summary:
+        st.markdown(f"**Locations checked** · platform `{summary['platform']}` · "
+                    f"{summary['configs_found']} config file(s) found")
+        st.dataframe([{
+            "client": r["client"], "location": r["location"], "status": r["status"],
+            "servers": r["servers"], "note": r["error"] or "",
+        } for r in summary["locations"]], width="stretch", hide_index=True)
+        if not candidates:
+            st.info("No MCP servers found on this machine. That's a clean result, not an error: none of the "
+                    "known config files exist or contain servers. If you run this in a cloud container, "
+                    "launch the app on your own computer instead.")
+
     if not st.session_state.scanned:
-        st.info("Click **Scan Local MCP Configs** to start.")
-    else:
+        st.info(f"Click **{scan_label}** to start.")
+    elif candidates:
         rows = [{
             "tool_name": c["tool_name"],
             "client": c["client"],
@@ -334,7 +412,8 @@ with tab1:
         if leaks:
             st.error(f"Secret value found in: {', '.join(sorted(set(leaks)))}")
         else:
-            st.success(f"Disk check: 0 of {len(raw_secret_values())} raw secret values appear anywhere in `data/*.json`.")
+            store = "data/local/*.json" if real_mode() else "data/*.json"
+            st.success(f"Disk check: 0 of {len(raw_secret_values())} raw secret values appear anywhere in `{store}`.")
 
 # ── ② Identity & Honesty Review ────────────────────────────────────────────────
 
@@ -407,7 +486,11 @@ with tab3:
     st.subheader("Step 3 · Metadata Diff & Governance Alerts")
     demo_hint(3)
     changed = [c for c in candidates if c.get("metadata_changed")]
-    if not st.session_state.scanned:
+    if real_mode():
+        if not changed:
+            st.info("No config drift on confirmed passports. To see it, mint a tool in ②, edit that tool's "
+                    "args in your MCP config, then re-scan in ①.")
+    elif not st.session_state.scanned:
         st.info("Run discovery in ① and mint `filesystem-mcp` in ② first.")
     elif not st.session_state.v2_active:
         st.info("Toggle **📝 Load v2 Config Update** in the sidebar to simulate an in-place config edit.")
@@ -451,7 +534,10 @@ with tab4:
     demo_hint(4)
     events = load_events()
     passports = eng.passports()
-    if not passports:
+    if real_mode():
+        st.info("Event linking runs on the demo's runtime event fixtures, whose sources point at the fixture "
+                "configs. Switch to **🎭 Demo fixtures** in the sidebar to link events.")
+    elif not passports:
         st.info("No passports yet. Scan in ① and mint at least `filesystem-mcp` in ② before linking events.")
     else:
         left, right = st.columns([1, 1])

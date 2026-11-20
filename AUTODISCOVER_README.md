@@ -116,8 +116,8 @@ Requires Python 3.10+. Run everything from the repository root.
 ```bash
 pip install -r requirements.txt
 
-# Acceptance tests (6 tests)
-python -m pytest tests/test_acceptance.py
+# Acceptance tests (6) + real-machine discovery tests (12)
+python -m pytest tests/test_acceptance.py tests/test_local_discovery.py -v
 
 # Live demo
 streamlit run app.py
@@ -152,6 +152,25 @@ Start from **🧹 1-Click Reset Demo State** in the sidebar. Each tab shows a �
 | 5 | **④** → pick `evt-0002` → *Link Event* without consent | "Linking is blocked without explicit consent." |
 | 6 | Tick consent → *Link Event* | "Source and timestamp are recorded. MISSING_APPROVAL comes from approvals.json, and the incident shows a read-only tool tried to write." |
 | 7 | Pick `evt-0003` → choose the filesystem-mcp passport → consent → *Link Event* | "You can't attach an event to the wrong tool." |
+
+### Real local machine mode
+Pick **💻 Scan Real Local Machine** in the sidebar to run the same pipeline on your own computer. It's a
+read-only scan of these well-known locations:
+
+| OS | Claude Desktop | Cursor | VS Code |
+|---|---|---|---|
+| Windows | `%APPDATA%/Claude/claude_desktop_config.json` | `%USERPROFILE%/.cursor/mcp.json` | `%APPDATA%/Code/User/mcp.json` |
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` | `~/.cursor/mcp.json` | `~/Library/Application Support/Code/User/mcp.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` | `~/.cursor/mcp.json` | `~/.config/Code/User/mcp.json` |
+
+- Paths are stored as the tokens above (`~`, `%APPDATA%`), and the home directory inside args is masked as
+  `~`, so OS usernames never reach the inventory and passport IDs stay stable per location.
+- VS Code's `"servers"` key is supported as well as `"mcpServers"`.
+- Missing, unreadable, corrupt or non-object files are reported per location (`missing`, `unresolved`,
+  `unreadable`, `invalid_json`, `invalid_format`) and never crash the scan. A machine with no configs
+  returns a clean empty summary.
+- Results go to an isolated registry in `data/local/`, which never touches the demo's `data/passports.json`.
+- Run Streamlit on your own computer for this mode. In a cloud container it correctly reports 0 configs.
 
 ### Out-of-order clicks are safe
 Each step shows guidance if it's used too early: restarting before anything is minted, loading v2 before
