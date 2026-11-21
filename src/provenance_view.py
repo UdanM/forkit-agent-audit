@@ -124,6 +124,8 @@ def lifecycle_dot(store_dir: str | Path) -> str:
     """
     s = load_store(store_dir)
     n_missing = sum(1 for x in s["links"] if x.get("approval_status") == MISSING_APPROVAL)
+    n_pass, n_chg, n_links = len(s["passports"]), len(s["changes"]), len(s["links"])
+    n_inc, n_find = len(s["incidents"]), len(s["findings"])
     c = _C
     #   row 1: config → redact → provenance hash
     #   row 2: compute_id → passport
@@ -137,7 +139,7 @@ def lifecycle_dot(store_dir: str | Path) -> str:
         f'  red [label={_card("02", "Redact secrets", "metadata-only")}];',
         f'  prov [label={_card("03", "Provenance hash", "source_path + tool + command")}];',
         f'  cid [label={_card("04", "Forkit Core", "compute_id()")}];',
-        f'  pp [label={_card("PASSPORT", "Stable passport_id", f"{len(s["passports"])} confirmed · never rewritten", border=c["accent"], width=2, sub_color=c["accent"])}];',
+        f'  pp [label={_card("PASSPORT", "Stable passport_id", f"{n_pass} confirmed · never rewritten", border=c["accent"], width=2, sub_color=c["accent"])}];',
         '  { rank=same; cfg; red; prov; }',
         '  { rank=same; cid; pp; }',
         '  cfg -> red -> prov;',
@@ -147,10 +149,10 @@ def lifecycle_dot(store_dir: str | Path) -> str:
         f'    label="SIDECAR RECORDS  ·  joined by passport_id  ·  never mutate the passport"; labeljust=l; labelloc=b; '
         f'style="rounded"; color="{c["hair"]}"; bgcolor="#fbfaf7"; fontcolor="{c["muted"]}"; fontsize=9; margin=14;',
         f'    s_appr [label={_card("", "approvals.json", "external", strip="#a8a29e")}];',
-        f'    s_chg [label={_card("", "metadata_changes.json", f"{len(s["changes"])} drift record(s)", strip="#ea580c", sub_color=c["orange"])}];',
-        f'    s_lnk [label={_card("", "linked_events.json", f"{len(s["links"])} consented · {n_missing} MISSING_APPROVAL", strip="#d97706", sub_color=c["amber"])}];',
-        f'    s_inc [label={_card("", "incidents.json", f"{len(s["incidents"])} out-of-expected-behavior", strip="#be123c", sub_color=c["red"])}];',
-        f'    s_pol [label={_card("", "policy_findings.json", f"{len(s["findings"])} finding(s)", strip="#be123c", sub_color=c["red"])}];',
+        f'    s_chg [label={_card("", "metadata_changes.json", f"{n_chg} drift record(s)", strip="#ea580c", sub_color=c["orange"])}];',
+        f'    s_lnk [label={_card("", "linked_events.json", f"{n_links} consented · {n_missing} MISSING_APPROVAL", strip="#d97706", sub_color=c["amber"])}];',
+        f'    s_inc [label={_card("", "incidents.json", f"{n_inc} out-of-expected-behavior", strip="#be123c", sub_color=c["red"])}];',
+        f'    s_pol [label={_card("", "policy_findings.json", f"{n_find} finding(s)", strip="#be123c", sub_color=c["red"])}];',
         '    { rank=same; s_appr; s_chg; s_lnk; s_inc; s_pol; }',
         '  }',
     ]

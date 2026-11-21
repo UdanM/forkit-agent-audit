@@ -13,9 +13,10 @@ import json
 import os
 import socket
 import tempfile
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .engine import UNKNOWN
 

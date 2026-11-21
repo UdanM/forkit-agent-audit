@@ -25,6 +25,7 @@ from typing import Any
 
 import streamlit as st
 
+from src.discovery_host import discovered_on_label, machine_name, record_discovery
 from src.engine import (
     APPROVED,
     INCIDENT,
@@ -37,7 +38,6 @@ from src.engine import (
     raw_secret_values_from_configs,
     render_audit_markdown,
 )
-from src.discovery_host import discovered_on_label, machine_name, record_discovery
 from src.live_map_html import lifecycle_html, live_map_html
 
 # ── Paths ──────────────────────────────────────────────────────────────────────

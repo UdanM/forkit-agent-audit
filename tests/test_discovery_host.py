@@ -3,16 +3,31 @@
 from __future__ import annotations
 
 import json
+import shutil
 import socket
 from pathlib import Path
 
 import pytest
 
-from src.discovery_host import (DEMO_LABEL, FILE_NAME, discovered_on_label, load_discovered_on, machine_name,
-                                record_discovery)
+from src.discovery_host import (
+    DEMO_LABEL,
+    FILE_NAME,
+    discovered_on_label,
+    load_discovered_on,
+    machine_name,
+    record_discovery,
+)
 from src.engine import UNKNOWN
 from src.live_map_html import live_map_html
-from tests.test_provenance_view import CONFIGS, engine, ws  # noqa: F401
+from tests.test_provenance_view import CONFIGS, engine
+
+REPO = Path(__file__).resolve().parent.parent
+
+
+@pytest.fixture()
+def ws(tmp_path: Path) -> Path:
+    shutil.copytree(REPO / "fixtures", tmp_path / "fixtures")
+    return tmp_path
 
 
 def real_scan(ws: Path, host: str, monkeypatch: pytest.MonkeyPatch) -> tuple[dict, list[dict]]:

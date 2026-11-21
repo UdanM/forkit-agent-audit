@@ -4,10 +4,21 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from pathlib import Path
 
+import pytest
+
 from src.live_map_html import live_map_html
-from tests.test_provenance_view import CLAUDE, CONFIGS, CURSOR, engine, full_demo_flow, snapshot, ws  # noqa: F401
+from tests.test_provenance_view import CLAUDE, CONFIGS, CURSOR, engine, full_demo_flow, snapshot
+
+REPO = Path(__file__).resolve().parent.parent
+
+
+@pytest.fixture()
+def ws(tmp_path: Path) -> Path:
+    shutil.copytree(REPO / "fixtures", tmp_path / "fixtures")
+    return tmp_path
 
 
 def rows(page: str) -> list[str]:
