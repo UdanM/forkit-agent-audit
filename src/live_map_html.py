@@ -23,17 +23,18 @@ _INCIDENT_TYPES = {"OUT_OF_EXPECTED_BEHAVIOR": "Out of expected behavior"}
 _CSS = """
 <style>
 .lm-wrap{overflow-x:auto;font-family:Inter,"Segoe UI",system-ui,sans-serif;color:#EEF1FF}
-.lm{border-collapse:separate;border-spacing:0 6px;min-width:1180px;width:100%;table-layout:fixed}
+.lm{border-collapse:separate;border-spacing:0 6px;min-width:880px;width:100%;table-layout:fixed}
+.lm .box,.lm .t{overflow-wrap:anywhere}
 .lm th{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#B1BBDA;
   text-align:left;padding:0 0 4px 2px;border-bottom:1.5px solid #EEF1FF}
 .lm th.lm-a{border-bottom:1.5px solid #EEF1FF}
 .lm td{vertical-align:middle;padding:0;position:relative}
-.lm col.c-box{width:auto}.lm col.c-arr{width:34px}.lm col.c-gap{width:22px}
+.lm col.c-box{width:auto}.lm col.c-arr{width:26px}.lm col.c-gap{width:14px}
 .lm .box{border:1px solid #4A5580;background:#131A30;padding:8px 10px;font-size:13px;line-height:1.4;
   height:100%;box-sizing:border-box}
 .lm td.span{height:1px}.lm td.span .box{display:flex;flex-direction:column;justify-content:center}
 .lm .t{font-weight:600}
-.lm .m{font-family:"JetBrains Mono",Consolas,monospace;font-size:12px;color:#D7DCF5;word-break:break-all}
+.lm .m{font-family:"JetBrains Mono",Consolas,monospace;font-size:11.5px;color:#D7DCF5;overflow-wrap:anywhere}
 .lm .s{font-size:12px;color:#B1BBDA}
 .lm .ok{color:#7FE0BE}.lm .bad{color:#FF8FA3}.lm .warn{color:#FFC988}
 .lm .box.pp{border:1.5px solid #EEF1FF}
