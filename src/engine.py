@@ -237,6 +237,15 @@ def _enabled(spec: dict[str, Any]) -> bool | str:
     return UNKNOWN
 
 
+def _claimed_source(event: dict[str, Any]) -> tuple[str | None, str | None]:
+    """(server_name, config_path) the event itself claims; missing or UNKNOWN -> None."""
+    source = event.get("source") if isinstance(event.get("source"), dict) else {}
+
+    def norm(v: Any) -> str | None:
+        return v if isinstance(v, str) and v and v != UNKNOWN else None
+    return norm(source.get("server_name")), norm(source.get("config_path"))
+
+
 def passport_id_of(record: dict[str, Any]) -> str:
     """Re-derive a record's passport ID from its own provenance fields."""
     return derive_passport_id(
@@ -819,7 +828,7 @@ def evaluate_policies(
 # ── Audit export helpers ───────────────────────────────────────────────────────
 
 STORE_FILES = ("passports.json", "metadata_changes.json", "linked_events.json", "incidents.json",
-               "policy_findings.json")
+               "policy_findings.json", "review_queue.json")
 _LEAK_PATTERNS: dict[str, re.Pattern[str]] = {
     "url_password": re.compile(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^:/@\s\"]+:(?!\[REDACTED\]@)[^@\s\"]+@"),
     "token_prefix": re.compile(
@@ -958,6 +967,12 @@ def render_audit_markdown(report: dict[str, Any]) -> str:
             [i.get("incident_id"), i.get("type"), i.get("tool_name"), i.get("tool_call"), i.get("result"),
              i.get("timestamp"), i.get("approval_status")] for i in report["incidents"]
         ]),
+        "## Review queue (not attributed to any tool)",
+        "",
+        _md_table(["Review", "Event", "Action", "Attribution", "Candidates", "Reason"], [
+            [r.get("review_id"), r.get("event_id"), r.get("tool_call"), r.get("attribution"),
+             len(r.get("candidate_passport_ids", [])), r.get("reason")] for r in report.get("review_queue", [])
+        ]),
         "## Policy findings",
         "",
         _md_table(["Rule", "Severity", "Title", "Tool", "Evidence"], [
@@ -1043,6 +1058,7 @@ class AutoDiscoverEngine:
         self.links_path = self.data_dir / "linked_events.json"
         self.incidents_path = self.data_dir / "incidents.json"
         self.changes_path = self.data_dir / "metadata_changes.json"
+        self.review_path = self.data_dir / "review_queue.json"
 
     # ── Reads ──────────────────────────────────────────────────────────────────
 
@@ -1054,6 +1070,9 @@ class AutoDiscoverEngine:
 
     def incidents(self) -> list[dict[str, Any]]:
         return _read_json(self.incidents_path, [])
+
+    def review_queue(self) -> list[dict[str, Any]]:
+        return _read_json(self.review_path, [])
 
     def metadata_changes(self) -> list[dict[str, Any]]:
         return _read_json(self.changes_path, [])
@@ -1237,6 +1256,7 @@ class AutoDiscoverEngine:
             "linked_events": links,
             "missing_approval_link_ids": [x["link_id"] for x in links if x.get("approval_status") == MISSING_APPROVAL],
             "incidents": incidents,
+            "review_queue": self.review_queue(),
             "policy_findings": findings,
             "integrity": {
                 "status": "PASS" if not mismatches else "FAIL",
@@ -1296,6 +1316,67 @@ class AutoDiscoverEngine:
                 return a
         return None
 
+    def attribution(self, event: dict[str, Any]) -> dict[str, Any]:
+        """Which confirmed passports could this event belong to?
+
+        Ambiguity-safe attribution, ported from UdanM/forkit-agent-audit @ 3f5b2aa
+        (``Inventory.candidates``): an event links only when its own source
+        evidence matches exactly one passport. Status is one of ``unique``,
+        ``ambiguous``, ``no_match`` or ``no_source_context``.
+        """
+        name, cfg = _claimed_source(event)
+        if name is None and cfg is None:
+            return {"status": "no_source_context", "candidates": [],
+                    "reason": "The event names neither a server nor a config file, so any link would be a guess."}
+        cands = sorted(
+            pid for pid, p in self.passports().items()
+            if p.get("passport_type", PASSPORT_TYPE) == PASSPORT_TYPE
+            and (name is None or p.get("tool_name") == name)
+            and (cfg is None or p.get("source_path") == cfg)
+        )
+        what = " @ ".join(x for x in (name, cfg) if x)
+        if len(cands) == 1:
+            return {"status": "unique", "candidates": cands, "reason": f"Exactly one passport matches {what}."}
+        if not cands:
+            return {"status": "no_match", "candidates": [],
+                    "reason": f"No confirmed passport matches {what}. Mint it first, or record the event for review."}
+        return {"status": "ambiguous", "candidates": cands,
+                "reason": f"{len(cands)} passports match {what}. The event needs its config file to be attributed."}
+
+    def record_for_review(self, event: dict[str, Any], user_consent: bool) -> dict[str, Any]:
+        """Keep an event that cannot be attributed, without linking it to any tool.
+
+        It stays unassigned until stronger evidence appears. Idempotent per event.
+        """
+        if user_consent is not True:
+            raise PermissionError("Recording an event for review requires explicit user_consent=True")
+        att = self.attribution(event)
+        if att["status"] == "unique":
+            raise ValueError("This event can be attributed to one passport. Link it instead.")
+        event_id = event.get("event_id") or UNKNOWN
+        queue = self.review_queue()
+        for item in queue:
+            if item["event_id"] == event_id and event_id != UNKNOWN:
+                return item
+        item = {
+            "review_id": "rev-" + HashEngine.hash_dict({"e": event_id, "s": att["status"]})[:12],
+            "event_id": event_id,
+            "timestamp": event.get("timestamp") or UNKNOWN,
+            "source": event.get("source") or UNKNOWN,
+            "tool_call": event.get("tool_call") or UNKNOWN,
+            "target": event.get("target") or UNKNOWN,
+            "result": event.get("result") or UNKNOWN,
+            "attribution": att["status"],
+            "candidate_passport_ids": att["candidates"],
+            "reason": att["reason"],
+            "actor": UNKNOWN,
+            "status": "NEEDS_REVIEW",
+            "recorded_at": _now(),
+        }
+        queue.append(item)
+        _write_json(self.review_path, queue)
+        return item
+
     def link_event(self, event: dict[str, Any], passport_id: str, user_consent: bool) -> dict[str, Any]:
         """Link a runtime event to a confirmed passport, with explicit consent.
 
@@ -1310,11 +1391,14 @@ class AutoDiscoverEngine:
             raise KeyError(f"No confirmed passport with id {passport_id}")
 
         source = event.get("source") or {}
-        claimed = (source.get("server_name"), source.get("config_path"))
+        claimed = _claimed_source(event)
         if claimed[0] is not None and claimed[0] != passport["tool_name"]:
             raise ValueError(f"Event is from {claimed[0]!r}, passport is {passport['tool_name']!r}")
         if claimed[1] is not None and claimed[1] != passport["source_path"]:
             raise ValueError(f"Event is from {claimed[1]!r}, passport is {passport['source_path']!r}")
+        attribution = self.attribution(event)
+        if attribution["status"] != "unique":
+            raise ValueError(attribution["reason"])
 
         event_id = event.get("event_id") or UNKNOWN
         links = self.linked_events()
@@ -1360,6 +1444,7 @@ class AutoDiscoverEngine:
             "event_claimed_approval_id": event.get("approval_id") or UNKNOWN,
             "runtime_consent_id": runtime_consent.get("consent_id") or UNKNOWN,
             "link_consent": True,
+            "attribution": "unique",
             "linked_at": _now(),
             "flags": flags,
             "incident_id": incident["incident_id"] if incident else None,

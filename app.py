@@ -302,7 +302,8 @@ DEMO_HINTS = {
     2: "Point at the same-name note and the UNKNOWN labels, mint all three, then click **Simulate Restart** in the sidebar.",
     3: "Toggle **Load v2 Config Update** in the sidebar, show the diff and why access mode is UNKNOWN, then open **04 Linking & Incidents**.",
     4: "Pick evt-0002 and click Link without consent (blocked), then tick consent and link (MISSING_APPROVAL + INCIDENT). "
-       "Finish with evt-0003 on the filesystem-mcp passport (blocked), then open **05 Provenance Map**.",
+       "Then evt-0003 on the filesystem-mcp passport (blocked). evt-0004 names only `postgres-mcp`, which two "
+       "configs share, so it is ambiguous: record it for review instead. Then open **05 Provenance Map**.",
     5: "Walk the top diagram once, then read the evt-0002 row of the live map from left to right.",
 }
 
@@ -1037,7 +1038,7 @@ with tab4:
             ev_labels = {
                 e["event_id"]: (f'{scen_of.get(e["event_id"], "?")} · {ORIGIN_LABEL.get(e["capture"]["origin"], "")} · '
                                 if agents_mode() else f'{e["event_id"]} · ')
-                + f'{e["source"]["server_name"]} · {e["tool_call"]} · {e["result"]}'
+                + f'{e["source"].get("server_name", UNKNOWN)} · {e["tool_call"]} · {e["result"]}'
                 for e in events
             }
             ev_id = st.selectbox("Runtime event", list(ev_labels), format_func=ev_labels.get, key="ev_select")
@@ -1047,18 +1048,34 @@ with tab4:
         with right:
             pids = list(passports)
             labels = {p: f'{passports[p]["tool_name"]} @ {passports[p]["source_path"]} · {short(p)}' for p in pids}
-            match = next(
-                (p for p in pids if passports[p]["tool_name"] == event["source"]["server_name"]
-                 and passports[p]["source_path"] == event["source"]["config_path"]),
-                None,
-            )
-            if match is None:
-                st.warning(
-                    f"The passport for this event's source (`{event['source']['server_name']}` @ "
-                    f"`{event['source']['config_path']}`) is not minted yet. Mint it in **02 Identity & Review** to link this event. "
-                    "Linking to another passport will be blocked as a source mismatch."
-                )
+            att = eng.attribution(event)
+            if att["status"] == "unique":
+                match = att["candidates"][0]
+            else:
                 match = pids[0]
+                title = {"ambiguous": "Ambiguous source", "no_source_context": "No source context",
+                         "no_match": "Passport not minted yet"}[att["status"]]
+                st.warning(f"**{title}.** {att['reason']} "
+                           + ("Mint it in **02 Identity & Review** to link this event. "
+                              if att["status"] == "no_match" else "")
+                           + "Linking it to a passport will be blocked by the engine.")
+                if att["status"] != "no_match":
+                    with st.container(border=True):
+                        st.markdown("**Keep it for review, unassigned.** The actor stays UNKNOWN until stronger "
+                                    "evidence appears.")
+                        rv_ok = st.checkbox("I grant explicit consent to record this event for review",
+                                            key=f"review_consent_{ev_id}")
+                        if st.button("Record for Review", key=f"review_{ev_id}", width="stretch"):
+                            try:
+                                eng.record_for_review(event, user_consent=rv_ok)
+                                st.session_state.last_error = None
+                            except (PermissionError, ValueError) as exc:
+                                st.session_state.last_error = f"{type(exc).__name__}: {exc}"
+                            st.rerun()
+                queued = [r for r in eng.review_queue() if r["event_id"] == event["event_id"]]
+                if queued:
+                    st.info(f"In the review queue as `{queued[0]['review_id']}` · actor UNKNOWN · "
+                            f"{len(queued[0]['candidate_passport_ids'])} candidate passport(s).")
             target = st.selectbox("File under passport", pids, index=pids.index(match),
                                   format_func=labels.get, key=f"target_{ev_id}")
             consent = st.checkbox("I grant explicit consent to link this event", key=f"consent_{ev_id}")

@@ -165,6 +165,8 @@ def test_secrets_never_reach_disk_and_unknowns_stay_unknown(workspace: Path) -> 
     engine = make_engine(workspace)
     onboard_all(engine)
     for event in load_events(workspace).values():
+        if "config_path" not in event["source"]:
+            continue  # unattributable fixtures (evt-0004/0005) are covered in test_attribution.py
         pid = next(
             p["passport_id"] for p in engine.passports().values()
             if p["tool_name"] == event["source"]["server_name"]
