@@ -35,10 +35,10 @@ waiting for review, rule findings, and incidents.
 | Tab | What you do | What it shows |
 |---|---|---|
 | **01 Discover** | Click **Scan Local MCP Configs** | The tools found in two example settings files. The database password shows as `[REDACTED]`, and a disk check confirms that no secret was saved. |
-| **02 Identity & Review** | Click **Single-Click Mint Stable ID** on each card | Each tool gets its passport. Owner and version show `UNKNOWN`. The two `postgres-mcp` tools are kept apart. |
-| **03 Drift & Governance** | Turn on **Load v2 Config Update** in the sidebar | Someone edited a tool's settings. The tool keeps its passport, and the change is flagged for review. The company rules (`POL-001` to `POL-005`) list what needs attention and show their evidence. |
-| **04 Linking & Incidents** | Pick event `evt-0002`, tick the consent box, click **Link Event** | The action is filed under the right passport. A tool that may only read tried to write a file, so an **incident** is recorded. |
-| **05 Provenance Map** | Just look | One page showing the whole chain: settings file, tool, passport, event and incident. |
+| **02 Identity** | Click **Single-Click Mint Stable ID** on each card | Each tool gets its passport. Owner and version show `UNKNOWN`. The two `postgres-mcp` tools are kept apart. |
+| **03 Drift** | Turn on **Load v2 Config Update** in the sidebar | Someone edited a tool's settings. The tool keeps its passport, and the change is flagged for review. The company rules (`POL-001` to `POL-005`) list what needs attention and show their evidence. |
+| **04 Linking** | Pick event `evt-0002`, tick the consent box, click **Link Event** | The action is filed under the right passport. A tool that may only read tried to write a file, so an **incident** is recorded. |
+| **05 Map** | Just look | One page showing the whole chain: settings file, tool, passport, event and incident. |
 | **06 Timeline** | Click **Save Log Checkpoint**, then **Simulate Log Tampering** | Which agent run did what and who handed it the work. A helper that was only allowed to read edited a protected file, and its own report says otherwise. When the log is edited afterwards, a critical finding appears. |
 
 Event `evt-0004` in tab 04 names only `postgres-mcp`, which two settings files share. AutoDiscover will not

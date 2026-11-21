@@ -207,7 +207,7 @@ assert hashlib.sha256(json.dumps(r, sort_keys=True).encode("utf-8")).hexdigest()
 ```
 
 ### 8. Visual provenance & lifecycle flow
-The **05 Provenance Map** tab shows two diagrams, with no new dependency:
+The **05 Map** tab shows two diagrams, with no new dependency:
 
 - **Lifecycle:** client config → redaction → provenance hash → Forkit Core `compute_id` → stable
   `passport_id`. The side records (approvals, drift, links, incidents, policy findings) hang off the
@@ -318,14 +318,14 @@ Start from **1-Click Reset Demo State** in the sidebar. Each tab shows a *Next d
 | # | Click | Say |
 |---|---|---|
 | 1 | **01 Discover** → *Scan Local MCP Configs* | "Three MCP servers found. Secrets are redacted at discovery, and the disk check proves no raw secret value is stored." |
-| 2 | **02 Identity & Review** → mint all three | "Owner and version are UNKNOWN because the config doesn't say. Both postgres-mcp tools share a name but have different provenance, so they get different IDs." |
+| 2 | **02 Identity** → mint all three | "Owner and version are UNKNOWN because the config doesn't say. Both postgres-mcp tools share a name but have different provenance, so they get different IDs." |
 | 3 | Sidebar → **Simulate Restart** | "All memory is wiped. The re-scan matched 3 of 3 tools to the same passport IDs, with zero duplicates." |
-| 4 | Sidebar → **Load v2 Config Update** → **03 Drift & Governance** | "Someone edited filesystem-mcp. It's the same passport, but we flag the diff. The read-only evidence is gone, so access mode is now UNKNOWN until a human reviews it." |
-| 5 | **04 Linking & Incidents** → pick `evt-0002` → *Link Event* without consent | "Linking is blocked without explicit consent." |
+| 4 | Sidebar → **Load v2 Config Update** → **03 Drift** | "Someone edited filesystem-mcp. It's the same passport, but we flag the diff. The read-only evidence is gone, so access mode is now UNKNOWN until a human reviews it." |
+| 5 | **04 Linking** → pick `evt-0002` → *Link Event* without consent | "Linking is blocked without explicit consent." |
 | 6 | Tick consent → *Link Event* | "Source and timestamp are recorded. MISSING_APPROVAL comes from approvals.json, and the incident shows a read-only tool tried to write." |
 | 7 | Pick `evt-0003` → choose the filesystem-mcp passport → consent → *Link Event* | "You can't attach an event to the wrong tool." |
 | 7b | Pick `evt-0004` | "It only says postgres-mcp, and two configs have one. That's ambiguous, so the engine refuses to link it. We record it for review with the actor UNKNOWN." |
-| 8 | **05 Provenance Map** | "Each row reads left to right: config file, tool, passport, event, incident. Everything joins by passport_id, and the passport itself never changes." |
+| 8 | **05 Map** | "Each row reads left to right: config file, tool, passport, event, incident. Everything joins by passport_id, and the passport itself never changes." |
 | 8b | **06 Timeline** → *Save Log Checkpoint* → *Simulate Log Tampering* | "The helper was declared read-only and still edited a protected file. Its own report disagrees with the observer. And when someone edits the log afterwards, the checkpoint catches it: POL-006, critical." |
 | 9 | Sidebar → **Download Governance Audit Report** | "Integrity and secret scan both PASS. The report is tamper-evident and every file is checksummed." |
 
@@ -374,7 +374,7 @@ work on synthetic files while AutoDiscover captures each tool call:
 The six scenarios cover an approved read, a blocked write, the same tool name in another client, the n8n
 run, a config edit that removes `--read-only` before a write, and a delegated helper (two real processes,
 watched by an independent observer) that writes although it was declared read-only; see tab 06. Linking still needs your consent tick in
-**04 Linking & Incidents**. Same from the command line: `python -m demo.agents.run_scenarios --consent`.
+**04 Linking**. Same from the command line: `python -m demo.agents.run_scenarios --consent`.
 Details and requirements: [`demo/agents/README.md`](demo/agents/README.md).
 
 ![Live agents: captured scenarios](docs/images/autodiscover/06-live-agents.png)

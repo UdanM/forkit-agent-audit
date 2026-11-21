@@ -173,7 +173,7 @@ def _tool_box(t: dict[str, Any], names: dict[str, int], found: str | None = None
 def _passport_box(pid: str, t: dict[str, Any]) -> str:
     if not t["_minted"]:
         return (f'<div class="box cand"><div class="t">Not issued yet</div>'
-                f'<div class="m">{_e(pid[:12])}</div><div class="s">Issue it in 02 Identity &amp; Review</div></div>')
+                f'<div class="m">{_e(pid[:12])}</div><div class="s">Issue it in 02 Identity</div></div>')
     try:
         intact = passport_id_of(t) == pid
     except (KeyError, TypeError, ValueError):

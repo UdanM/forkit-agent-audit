@@ -133,6 +133,11 @@ code, .mono { font-family: var(--ad-mono) !important; }
 .badge { display:inline-block; padding:1px 8px; border-radius:5px; font-weight:600; font-family:var(--ad-sans);
          font-size:0.78rem; margin:2px 4px 2px 0; letter-spacing:0.01em; line-height:1.55; vertical-align:middle;
          border:1px solid transparent; }
+.whatsnew { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:baseline; margin:0 0 10px;
+  padding:9px 14px; border:1px solid #E7C9B8; border-left:3px solid #C25E3A; background:#FDF6F1;
+  border-radius:8px; font-size:13px; color:#44403C; }
+.whatsnew b { color:#9A4527; font-weight:600; margin-right:4px; }
+.whatsnew i { font-style:normal; font-weight:600; color:#1C1917; margin-right:4px; }
 .b-ok       { background:#ECFDF5; color:#047857; border-color:#A7F3D0; }
 .b-unknown  { background:#FFFBEB; color:#B45309; border-color:#FDE68A; }
 .b-bad      { background:#FFF1F2; color:#BE123C; border-color:#FECDD3; }
@@ -305,12 +310,12 @@ def sidebar_section(title: str) -> None:
 
 
 DEMO_HINTS = {
-    1: "Click **Scan**, point at the [REDACTED] card and the disk check, then open **02 Identity & Review**.",
+    1: "Click **Scan**, point at the [REDACTED] card and the disk check, then open **02 Identity**.",
     2: "Point at the same-name note and the UNKNOWN labels, mint all three, then click **Simulate Restart** in the sidebar.",
-    3: "Toggle **Load v2 Config Update** in the sidebar, show the diff and why access mode is UNKNOWN, then open **04 Linking & Incidents**.",
+    3: "Toggle **Load v2 Config Update** in the sidebar, show the diff and why access mode is UNKNOWN, then open **04 Linking**.",
     4: "Pick evt-0002 and click Link without consent (blocked), then tick consent and link (MISSING_APPROVAL + INCIDENT). "
        "Then evt-0003 on the filesystem-mcp passport (blocked). evt-0004 names only `postgres-mcp`, which two "
-       "configs share, so it is ambiguous: record it for review instead. Then open **05 Provenance Map**.",
+       "configs share, so it is ambiguous: record it for review instead. Then open **05 Map**.",
     5: "Walk the top diagram once, then read the evt-0002 row of the live map from left to right.",
     6: "Click **Save Log Checkpoint**, read the helper's delegated write to the protected file, then click "
        "**Simulate Log Tampering**: the rewritten log raises a critical finding.",
@@ -516,7 +521,7 @@ with st.sidebar:
                 st.session_state.active_tab = tab
             run_discovery()
             st.session_state.flash = ("success", f"Agents ran. {run['events']} tool calls captured and minted "
-                                      "passports are ready. Link the events in **04 Linking & Incidents**.")
+                                      "passports are ready. Link the events in **04 Linking**.")
             st.rerun()
     elif real_mode():
         if st.button("Clear Local Scan Registry", width="stretch", type="primary"):
@@ -575,12 +580,12 @@ with st.sidebar:
             st.session_state.flash = (
                 "warning",
                 "v2 config loaded, but filesystem-mcp has no passport yet, so there is nothing to diff against. "
-                "For the demo: turn v2 off, mint filesystem-mcp in **02 Identity & Review**, then turn v2 on again.",
+                "For the demo: turn v2 off, mint filesystem-mcp in **02 Identity**, then turn v2 on again.",
             )
         else:
             st.session_state.flash = (
                 "warning" if v2_toggle else "info",
-                "v2 config loaded: filesystem-mcp args changed on disk. See **03 Drift & Governance**."
+                "v2 config loaded: filesystem-mcp args changed on disk. See **03 Drift**."
                 if v2_toggle else "Reverted to the original v1 config.",
             )
         st.rerun()
@@ -690,6 +695,17 @@ def ask_store() -> dict[str, Any]:
             "review_queue": eng.review_queue(), "policy_findings": audit["policy_findings"], "timeline": tl}
 
 
+st.markdown(
+    '<div class="whatsnew"><b>New after the team merge</b>'
+    '<span><i>06 Timeline</i> delegated runs and the log tampering demo</span>'
+    '<span><i>04 Linking</i> ambiguous events evt-0004 and evt-0005 go to a review queue</span>'
+    '<span><i>Ask AutoDiscover</i> questions answered with sources</span>'
+    '<span><i>Sidebar</i> append-only Git archive</span>'
+    '<span><i>Scan Real Local Machine</i> Claude Code, Windsurf, Codex, AI CLIs, apps and extensions</span>'
+    '<span><i>Live agents</i> scenario F, a helper that breaks its read-only promise</span></div>',
+    unsafe_allow_html=True,
+)
+
 with st.expander("Ask AutoDiscover"):
     q_col, b_col = st.columns([5, 1])
     question = q_col.text_input("Question", key="ask_q", label_visibility="collapsed",
@@ -776,7 +792,7 @@ if st.session_state.flash:
 proof = st.session_state.restart_proof
 if proof and proof["registry_count"] == 0:
     st.info("Restart simulated, but the registry is empty so there is nothing to recognize yet. "
-            "Scan in **01 Discover**, mint in **02 Identity & Review**, then click **Simulate Restart** again.")
+            "Scan in **01 Discover**, mint in **02 Identity**, then click **Simulate Restart** again.")
 elif proof:
     same = proof["after"] == proof["recognized"] and (not proof["before"] or proof["before"] == proof["after"])
     keys = [(p["source_path"], p["tool_name"]) for p in eng.passports().values()]
@@ -790,15 +806,15 @@ elif proof:
     else:
         st.warning(
             f"Restart re-scan: {len(proof['recognized'])}/{len(proof['after'])} tools already have passports "
-            f"({dupes} duplicates). Mint the rest in **02 Identity & Review** to see them recognized next time."
+            f"({dupes} duplicates). Mint the rest in **02 Identity** to see them recognized next time."
         )
     with st.expander("Passport IDs before vs. after restart"):
         st.json({"before_restart": proof["before"], "after_restart": proof["after"]})
 
 # Keyed, stateful tabs: clicking a button inside a tab keeps you on that tab.
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-    ["01 Discover", "02 Identity & Review", "03 Drift & Governance", "04 Linking & Incidents",
-     "05 Provenance Map", "06 Timeline"],
+    ["01 Discover", "02 Identity", "03 Drift", "04 Linking",
+     "05 Map", "06 Timeline"],
     key="active_tab",
     on_change="rerun",
 )
@@ -911,7 +927,7 @@ with tab1:
             store = f"{store_label()}/*.json"
             st.success(f"Disk check: 0 of {len(raw_secret_values())} raw secret values appear anywhere in `{store}`.")
 
-# ── 02 Identity & Review ──────────────────────────────────────────────────────
+# ── 02 Identity ──────────────────────────────────────────────────────
 
 with tab2:
     st.subheader("Review each server and issue its passport")
@@ -936,7 +952,7 @@ with tab2:
         if st.session_state.v2_active and any(
             c["source_path"] == CLAUDE and c["passport_id"] not in passports for c in candidates
         ):
-            st.warning("You are on the edited **v2** config. Minting now records v2 as the baseline, so **03 Drift & Governance** will "
+            st.warning("You are on the edited **v2** config. Minting now records v2 as the baseline, so **03 Drift** will "
                        "have no diff to show. For the demo, turn v2 off in the sidebar first and mint on v1.")
 
         cols = st.columns(len(candidates))
@@ -991,7 +1007,7 @@ with tab2:
                 + ". Same name, different provenance, so they get different passport IDs."
             )
 
-# ── 03 Drift & Governance ─────────────────────────────────────────────────────
+# ── 03 Drift ─────────────────────────────────────────────────────
 
 with tab3:
     st.subheader("Config changes and policy findings")
@@ -1000,18 +1016,18 @@ with tab3:
     changed = [c for c in candidates if c.get("metadata_changed")]
     if real_mode():
         if not changed:
-            st.info("No config drift on confirmed passports. To see it, mint a tool in **02 Identity & Review**, edit that tool's "
+            st.info("No config drift on confirmed passports. To see it, mint a tool in **02 Identity**, edit that tool's "
                     "args in your MCP config, then re-scan in **01 Discover**.")
     elif agents_mode():
         if not changed:
             st.info("Scenario E removes `--read-only` from the Claude Desktop agent config during the run. Click "
                     "**Run Agent Scenarios** in the sidebar and the change shows up here, on the same passport.")
     elif not st.session_state.scanned:
-        st.info("Run discovery in **01 Discover** and mint `filesystem-mcp` in **02 Identity & Review** first.")
+        st.info("Run discovery in **01 Discover** and mint `filesystem-mcp` in **02 Identity** first.")
     elif not st.session_state.v2_active:
         st.info("Toggle **Load v2 Config Update** in the sidebar to simulate an in-place config edit.")
     elif not changed:
-        st.info("v2 is loaded, but no confirmed passport changed. Mint `filesystem-mcp` in **02 Identity & Review** first, "
+        st.info("v2 is loaded, but no confirmed passport changed. Mint `filesystem-mcp` in **02 Identity** first, "
                 "then toggle v2 off and on again.")
     for c in changed:
         stored = eng.passports()[c["passport_id"]]
@@ -1068,7 +1084,7 @@ with tab3:
                 unsafe_allow_html=True,
             )
 
-# ── 04 Linking & Incidents ────────────────────────────────────────────────────
+# ── 04 Linking ────────────────────────────────────────────────────
 
 with tab4:
     st.subheader("Link runtime events to passports")
@@ -1084,7 +1100,7 @@ with tab4:
                 "agent works through a real MCP file server behind the AutoDiscover tap, and an n8n workflow "
                 "reports its actions to the collector.")
     elif not passports:
-        st.info("No passports yet. Scan in **01 Discover** and mint at least `filesystem-mcp` in **02 Identity & Review** before linking events.")
+        st.info("No passports yet. Scan in **01 Discover** and mint at least `filesystem-mcp` in **02 Identity** before linking events.")
     else:
         scen_of: dict[str, str] = {}
         if agents_mode():
@@ -1135,7 +1151,7 @@ with tab4:
                 title = {"ambiguous": "Ambiguous source", "no_source_context": "No source context",
                          "no_match": "Passport not minted yet"}[att["status"]]
                 st.warning(f"**{title}.** {att['reason']} "
-                           + ("Mint it in **02 Identity & Review** to link this event. "
+                           + ("Mint it in **02 Identity** to link this event. "
                               if att["status"] == "no_match" else "")
                            + "Linking it to a passport will be blocked by the engine.")
                 if att["status"] != "no_match":
@@ -1230,7 +1246,7 @@ with tab4:
                 "timestamp": i["timestamp"], "result": i["result"],
             } for i in eng.incidents()], width="stretch", hide_index=True)
 
-# ── 05 Provenance Map ─────────────────────────────────────────────────────────
+# ── 05 Map ─────────────────────────────────────────────────────────
 
 with tab5:
     st.subheader("Where every record comes from")
@@ -1254,7 +1270,7 @@ with tab5:
                 for p in set(map_passports) | {c["passport_id"] for c in st.session_state.candidates}}
     live = live_map_html(store, candidates=st.session_state.candidates, focus=focus, found_on=found_on)
     if live is None:
-        st.info("Nothing to map yet. Scan in **01 Discover** (and mint in **02 Identity & Review**) and the live map of configs, passports, "
+        st.info("Nothing to map yet. Scan in **01 Discover** (and mint in **02 Identity**) and the live map of configs, passports, "
                 "events and incidents appears here.")
     else:
         with st.container(border=True, key="graphframe_live"):
