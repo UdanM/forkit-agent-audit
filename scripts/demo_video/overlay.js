@@ -26,6 +26,9 @@
   #dv-title .t{color:#fff;font-size:58px;font-weight:800;line-height:1.08;letter-spacing:-.02em;max-width:1100px}
   #dv-title .s{color:#c9cbe6;font-size:24px;line-height:1.45;margin-top:22px;max-width:1050px}
   #dv-title .f{position:absolute;left:140px;bottom:56px;color:#8e90b5;font-size:16px}
+  #dv-pause{position:fixed;right:26px;bottom:96px;background:#ffd27a;color:#1a1400;font-weight:900;font-size:26px;letter-spacing:.06em;
+    border-radius:14px;padding:10px 22px;box-shadow:0 10px 30px rgba(0,0,0,.55);display:none;z-index:7}
+  #dv-cap.big .ttl{font-size:24px;margin:0}#dv-cap.big{align-items:center}
   #dv-card{position:fixed;right:28px;top:96px;width:560px;background:rgba(12,14,30,.97);border:1px solid #6d5fd6;border-radius:14px;padding:18px 20px;
     color:#e7e8f7;box-shadow:0 14px 50px rgba(0,0,0,.6);display:none;z-index:6;font-size:15px;line-height:1.45}
   #dv-card h5{margin:0 0 10px 0;font-size:16px;color:#BEAFFF;letter-spacing:.04em;text-transform:uppercase}
@@ -39,7 +42,7 @@
     r.innerHTML = `<div id="dv-cursor"><svg width="26" height="26" viewBox="0 0 24 24"><path d="M3 2l7.5 19 2.6-7.9L21 10.5z" fill="#fff" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
       <div id="dv-cap"><div class="tag"></div><div><div class="ttl"></div><div class="txt"></div></div><div class="hold">⏸ PAUSE HERE</div></div>
       <div id="dv-title"><div class="k"></div><div class="t"></div><div class="s"></div><div class="f"></div></div>
-      <div id="dv-card"></div>`;
+      <div id="dv-card"></div><div id="dv-pause"></div>`;
     document.body.appendChild(r);
     let hls = [];
     function loop() {
@@ -79,6 +82,8 @@
         el.querySelector('.k').textContent = k; el.querySelector('.t').innerHTML = t; el.querySelector('.s').innerHTML = s || ''; el.querySelector('.f').innerHTML = f || '';
         el.classList.add('on');
       },
+      pause(label) { const p = document.getElementById('dv-pause'); p.textContent = label || ''; p.style.display = label ? 'block' : 'none'; },
+      big(on) { document.getElementById('dv-cap').classList.toggle('big', !!on); },
       card(html, pos) {
         const c = document.getElementById('dv-card');
         if (!html) { c.style.display = 'none'; return; }
