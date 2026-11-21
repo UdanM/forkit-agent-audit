@@ -15,7 +15,8 @@ def test_local_scenarios_capture_link_and_flag(tmp_path, monkeypatch):
     out = tmp_path / "data" / "agents"
 
     status = {s["id"]: s["status"] for s in summary["scenarios"]}
-    assert status == {"A": "ran", "B": "ran", "C": "ran", "D": "skipped", "E": "ran"}
+    assert status == {"A": "ran", "B": "ran", "C": "ran", "D": "skipped", "E": "ran", "F": "ran"}
+    assert {"POL-007", "POL-008", "POL-009", "POL-015"} <= set(summary["pilot"]["findings"])
 
     events = {e["event_id"]: e for e in read_events(out / "captured_events.jsonl")}
     by_id = {s["id"]: [events[i] for i in s["event_ids"]] for s in summary["scenarios"]}

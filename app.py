@@ -1233,8 +1233,8 @@ def activity_sources() -> tuple[str, Path | None, Path | None]:
                 shutil.copy(ACTIVITY_FIXTURES / name, ACTIVITY_LIVE / name)
         return "demo", ACTIVITY_LIVE / "observer.jsonl", ACTIVITY_LIVE / "agent_reported.jsonl"
     if agents_mode():
-        log = AGENTS / "pilot" / "observer.jsonl"
-        return "agents-pilot", (log if log.is_file() else None), None
+        log, rep = AGENTS / "pilot" / "observer.jsonl", AGENTS / "pilot" / "agent_reported.jsonl"
+        return "agents-pilot", (log if log.is_file() else None), (rep if rep.is_file() else None)
     obs = st.session_state.get("activity_observer", "").strip()
     rep = st.session_state.get("activity_reported", "").strip()
     obs_p = Path(obs).expanduser() if obs else None

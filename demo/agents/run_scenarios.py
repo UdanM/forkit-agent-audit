@@ -7,7 +7,7 @@ What happens, with synthetic files only:
 1. A fresh store in ``data/agents``: the three demo configs are copied to ``data/agents/live/configs``,
    discovered and minted as passports (approvals from ``demo/agents/approvals.json``).
 2. An HTTP collector starts on a free local port with a random token.
-3. Five scenarios run. The local ones drive a scripted LangGraph agent (no LLM) through a real MCP
+3. Six scenarios run. The local ones drive a scripted LangGraph agent (no LLM) through a real MCP
    filesystem server behind the AutoDiscover tap. The cloud one runs a real n8n workflow that reads
    and writes files and then POSTs its own actions to the collector.
 4. With ``--consent`` (the operator consents for this scripted run) every captured event is linked to
@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from demo.agents.local_agent import run as run_agent
+from demo.agents.pilot import run_pilot
 from src.capture.collector import serve
 from src.capture.events import read_events
 from src.engine import AutoDiscoverEngine
@@ -189,6 +190,22 @@ def run_all(root: Path = REPO, fs_server: str = "auto", n8n: str | None = None, 
              "Drift on the same passport (POL-002). The write now succeeds, and because the passport was "
              "confirmed read-only it becomes an incident.", drift_then_write)
 
+    pilot_info: dict[str, Any] = {}
+
+    def delegated_pilot() -> str:
+        res = run_pilot(out / "pilot")
+        engine.save_log_checkpoint("agents-pilot", res["observer_log"])
+        tl = engine.activity_timeline("agents-pilot", res["observer_log"], res["reported_log"])
+        pilot_info.update(runs=len(tl["runs"]), findings=[f["rule_id"] for f in tl["findings"]])
+        return (f"{len(tl['runs'])} worker processes observed; findings "
+                + (", ".join(pilot_info["findings"]) or "none"))
+
+    scenario("F", "Agent delegates to a helper that is declared read-only, and the helper writes", "local",
+             "Two real worker processes with their PIDs. The observer sees the helper change the protected "
+             "summary: POL-007 (read-only write), POL-008 (protected file) and POL-009 (no approval). The "
+             "helper's own report calls it read-only, which disagrees with the observer (POL-015). See tab 06.",
+             delegated_pilot)
+
     srv.shutdown()
     srv.server_close()
 
@@ -215,7 +232,7 @@ def run_all(root: Path = REPO, fs_server: str = "auto", n8n: str | None = None, 
 
     summary = {"fs_server": "mini (stdlib stand-in)" if use_mini else "@modelcontextprotocol/server-filesystem",
                "n8n": bool(n8n_bin), "consent": consent, "scenarios": scenarios, "cross_link": cross,
-               "events": len(events)}
+               "events": len(events), "pilot": pilot_info}
     _save(out / "scenarios.json", summary)
     return summary
 
