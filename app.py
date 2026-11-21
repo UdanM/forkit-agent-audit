@@ -894,6 +894,6 @@ with tab5:
     else:
         with st.container(border=True, key="graphframe_live"):
             st.graphviz_chart(dot, width="stretch")
-        st.caption("Solid box = confirmed passport (integrity re-derived from provenance) · dashed = candidate "
-                   "not minted yet · red = MISSING_APPROVAL / incident · orange = drift or same-name tools "
-                   "kept apart.")
+        st.caption("Read left to right: config file → passport (compute_id, integrity re-derived) → records "
+                   "joined by passport_id → incident. Dashed = candidate not minted yet · red = "
+                   "MISSING_APPROVAL or incident · orange = drift or same-name tools kept apart.")

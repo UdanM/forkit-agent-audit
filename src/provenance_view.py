@@ -186,7 +186,10 @@ def live_map_dot(
 
     collapse = len(tools) > max_tools
     c = _C
-    out = _header("provenance_map", nodesep=0.35, ranksep=0.7)
+    out = _header("provenance_map", nodesep=0.3, ranksep=0.9)
+    # Every connector leaves a card on the right and enters the next on the left, so the map
+    # reads strictly left to right. Edge labels are left off; the app caption names the columns.
+    out += ['  graph [splines=spline, newrank=true];', '  edge [tailport=e, headport=w];']
     # Quiet cards: white fills with a coloured hairline; only events keep a tint (red/green status).
     out += ['  node [margin="0.16,0.08", penwidth=1.2];', f'  edge [color="{c["line"]}", penwidth=1.1];']
     by_source: dict[str, list[str]] = {}
@@ -206,7 +209,7 @@ def live_map_dot(
             t, nid = tools[pid], node_ids[pid]
             dup = names[str(t.get("tool_name"))] > 1
             access = t.get("access_mode", UNKNOWN)
-            tool_label = _lbl(t.get("tool_name"), f"cmd: {t.get('command', UNKNOWN)} · access: {access}",
+            tool_label = _lbl(t.get("tool_name"), f"{t.get('command', UNKNOWN)}  ·  access {access}",
                               "same name, different provenance" if dup else "")
             edge = f', color="#ea580c", fontcolor="{c["orange"]}"' if dup else ""
             out.append(f'    {nid}_tool [label="{tool_label}", fillcolor="white"{edge}];')
@@ -223,18 +226,18 @@ def live_map_dot(
             color = c["accent"] if intact else c["red"]
             out.append(f'  {nid} [label="{_lbl("🔒 passport " + pid[:12] + "…", verdict)}", '
                        f'fillcolor="white", fontcolor="{c["ink"] if intact else c["red"]}", color="{color}", penwidth=2];')
-            out.append(f'  {nid}_tool -> {nid} [label="compute_id", color="{c["accent"]}", penwidth=1.4];')
+            out.append(f'  {nid}_tool -> {nid} [color="{c["accent"]}", penwidth=1.4];')
         else:
             out.append(f'  {nid} [label="{_lbl("candidate " + pid[:12] + "…", "not minted yet")}", '
                        f'style="rounded,dashed", fillcolor="white", fontcolor="{c["muted"]}"];')
-            out.append(f'  {nid}_tool -> {nid} [style=dashed, label="compute_id"];')
+            out.append(f'  {nid}_tool -> {nid} [style=dashed];')
 
         # Drift
         drift = [x for x in s["changes"] if x.get("passport_id") == pid]
         if drift:
-            out.append(f'  {nid}_chg [label="{_lbl(f"config drift × {len(drift)}", "PENDING_REVIEW")}", '
+            out.append(f'  {nid}_chg [label="{_lbl(f"config drift × {len(drift)}", "pending review")}", '
                        f'fillcolor="white", color="#ea580c", fontcolor="{c["orange"]}"];')
-            out.append(f'  {nid} -> {nid}_chg [label="passport_id"];')
+            out.append(f'  {nid} -> {nid}_chg [color="#ea580c"];')
 
         # Policy findings summary
         found = [f for f in s["findings"] if f.get("passport_id") == pid]
@@ -246,7 +249,7 @@ def live_map_dot(
             line, fg = ("#be123c", c["red"]) if sev_red else ("#d97706", c["amber"])
             out.append(f'  {nid}_pol [label="{_lbl("policy", *rules)}", fillcolor="white", color="{line}", '
                        f'fontcolor="{fg}"];')
-            out.append(f'  {nid} -> {nid}_pol [label="passport_id"];')
+            out.append(f'  {nid} -> {nid}_pol [color="{line}"];')
 
         # Events and incidents
         links = [x for x in s["links"] if x.get("passport_id") == pid]
@@ -254,7 +257,7 @@ def live_map_dot(
             miss = sum(1 for x in links if x.get("approval_status") == MISSING_APPROVAL)
             out.append(f'  {nid}_ev [label="{_lbl(f"{len(links)} linked event(s)", f"{miss} MISSING_APPROVAL")}", '
                        f'fillcolor="{c["amber_bg"] if miss else c["green_bg"]}"];')
-            out.append(f'  {nid} -> {nid}_ev [label="consented"];')
+            out.append(f'  {nid} -> {nid}_ev [color="{c["line"]}"];')
             continue
         for li, link in enumerate(links):
             eid = f"{nid}_e{li}"
@@ -264,7 +267,7 @@ def live_map_dot(
             fill, fg, line = ((c["red_bg"], c["red"], "#be123c") if missing
                               else (c["green_bg"], c["green"], "#2f7a4f"))
             out.append(f'  {eid} [label="{label}", fillcolor="{fill}", fontcolor="{fg}", color="{line}"];')
-            out.append(f'  {nid} -> {eid} [label="consented link"];')
+            out.append(f'  {nid} -> {eid} [color="{line}"];')
             inc = next((i for i in s["incidents"] if i.get("incident_id") == link.get("incident_id")), None)
             if inc:
                 out.append(f'  {eid}_inc [label="{_lbl("🚨 INCIDENT", inc.get("type", UNKNOWN), inc.get("incident_id"))}", '
