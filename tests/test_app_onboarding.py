@@ -25,6 +25,9 @@ def test_one_click_setup_then_link_shows_plain_labels():
     text = " ".join(m.value for m in at.markdown)
     assert not at.exception
     assert "NO APPROVAL ON FILE" in text and "Incident recorded" in text
+    # Lineage: the incident names its parent passport and the settings file that declared the tool.
+    parent = text.split("Parent passport", 1)[1].split("</div>", 1)[0]
+    assert "filesystem-mcp" in parent and "fixtures/claude_desktop_config.json" in parent
     assert "In plain words" in text and "1 INCIDENT" in text          # Map summary
     _button(at, "Save log checkpoint").click().run()
     _button(at, "Simulate log tampering").click().run()
