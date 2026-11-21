@@ -112,7 +112,8 @@ def run_all(root: Path = REPO, fs_server: str = "auto", n8n: str | None = None, 
 
     log = out / "captured_events.jsonl"
     os.environ["AUTODISCOVER_CAPTURE_LOG"] = str(log)
-    os.environ["PYTHONPATH"] = os.pathsep.join(filter(None, [str(REPO), os.environ.get("PYTHONPATH")]))
+    paths = [x for x in os.environ.get("PYTHONPATH", "").split(os.pathsep) if x]
+    os.environ["PYTHONPATH"] = os.pathsep.join([str(REPO), *[x for x in paths if x != str(REPO)]])
 
     engine = AutoDiscoverEngine(data_dir=out, base_dir=out / "live",
                                 approvals_path=DEMO / "approvals.json",

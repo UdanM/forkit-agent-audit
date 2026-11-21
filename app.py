@@ -28,6 +28,7 @@ from typing import Any
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
+from src.capture.events import read_events
 from src.discovery_host import discovered_on_label, machine_name, record_discovery
 from src.engine import (
     APPROVED,
@@ -63,6 +64,12 @@ CURSOR = "fixtures/cursor_mcp.json"
 CONFIGS = [CLAUDE, CURSOR]
 EVENTS_FILE = FIXTURES / "runtime_events.jsonl"
 APPROVALS_FILE = FIXTURES / "approvals.json"
+# Live agents: what demo/agents/run_scenarios.py captured from real agent runs (local tap + n8n collector).
+AGENT_ROOT = ROOT if os.environ.get("AUTODISCOVER_PER_SESSION") != "1" else DATA / "agent_run"
+AGENTS = AGENT_ROOT / "data" / "agents"
+AGENT_APPROVALS = ROOT / "demo" / "agents" / "approvals.json"
+AGENT_CONFIGS = ("claude_desktop_config.json", "cursor_mcp.json", "n8n_mcp.json")
+ORIGIN_LABEL = {"local-tap": "local tap", "cloud-n8n": "cloud n8n", "cloud-collector": "cloud collector"}
 
 st.set_page_config(page_title="AutoDiscover · Forkit Passports", page_icon="🛂", layout="wide")
 
@@ -300,8 +307,20 @@ def real_mode() -> bool:
     return st.session_state.get("mode") == "real"
 
 
+def agents_mode() -> bool:
+    return st.session_state.get("mode") == "agents"
+
+
+def demo_mode() -> bool:
+    return not real_mode() and not agents_mode()
+
+
+def store_label() -> str:
+    return "data/local" if real_mode() else "data/agents" if agents_mode() else "data"
+
+
 def demo_hint(step: int) -> None:
-    if real_mode():
+    if not demo_mode():
         return
     st.caption(f"Next in the demo: {DEMO_HINTS[step]}")
 
@@ -323,10 +342,10 @@ def refresh_policies() -> None:
 
 def found_on_html(pid: str) -> str:
     """Discovered-on cell: demo label, recorded machine name(s), or the UNKNOWN badge."""
-    label = discovered_on_label(engine().data_dir, pid, demo=not real_mode())
+    label = discovered_on_label(engine().data_dir, pid, demo=demo_mode())
     if label == UNKNOWN:
         return value_badge(label)
-    return f'<span class="mono">{"demo fixtures" if not real_mode() else html.escape(label)}</span>'
+    return f'<span class="mono">{"demo fixtures" if demo_mode() else html.escape(label)}</span>'
 
 
 def short(pid: str) -> str:
@@ -343,7 +362,15 @@ def restore_live_configs(v2: bool) -> None:
     shutil.copy(FIXTURES / src, LIVE_FIXTURES / "claude_desktop_config.json")
 
 
+def agent_config_paths() -> list[Path]:
+    live = AGENTS / "live" / "configs"
+    return [live / n for n in AGENT_CONFIGS if (live / n).exists()]
+
+
 def engine() -> AutoDiscoverEngine:
+    if agents_mode():
+        return AutoDiscoverEngine(data_dir=AGENTS, base_dir=AGENTS / "live", approvals_path=AGENT_APPROVALS,
+                                  policies_path=FIXTURES / "policies.json")
     if real_mode():
         return AutoDiscoverEngine(data_dir=LOCAL_DATA, base_dir=ROOT, approvals_path=APPROVALS_FILE)
     return AutoDiscoverEngine(data_dir=DATA, base_dir=LIVE, approvals_path=APPROVALS_FILE)
@@ -356,6 +383,11 @@ def run_discovery() -> None:
         record_discovery(engine().data_dir, [c["passport_id"] for c in summary["candidates"]], machine_name())
         st.session_state.scan_summary = summary
         st.session_state.candidates = summary["candidates"]
+    elif agents_mode():
+        cands = engine().discover_tools(agent_config_paths())
+        # The agents really ran on this machine, so its name is recorded (sidecar only, never an ID input).
+        record_discovery(engine().data_dir, [c["passport_id"] for c in cands], machine_name())
+        st.session_state.candidates = cands
     else:
         st.session_state.candidates = engine().discover_tools(CONFIGS)
     st.session_state.scanned = True
@@ -381,12 +413,16 @@ def init_state() -> None:
 
 
 def load_events() -> list[dict[str, Any]]:
+    if agents_mode():
+        return read_events(AGENTS / "captured_events.jsonl")
     return [json.loads(line) for line in EVENTS_FILE.read_text().splitlines() if line.strip()]
 
 
 def scanned_config_paths() -> list[Path]:
     if real_mode():
         return [loc["path"] for loc in known_config_locations() if loc["path"] is not None]
+    if agents_mode():
+        return agent_config_paths()
     return [LIVE / cfg for cfg in CONFIGS]
 
 
@@ -417,7 +453,8 @@ with st.sidebar:
 
     # ── Section 1: Discovery Mode ──
     sidebar_section("Source")
-    mode_labels = {"demo": "Demo fixtures (default)", "real": "Scan Real Local Machine"}
+    mode_labels = {"demo": "Demo fixtures (default)", "real": "Scan Real Local Machine",
+                   "agents": "Live agents (captured runs)"}
     picked = st.radio("Discovery mode", list(mode_labels), format_func=mode_labels.get,
                       index=list(mode_labels).index(st.session_state.mode), label_visibility="collapsed")
     if picked != st.session_state.mode:
@@ -431,14 +468,33 @@ with st.sidebar:
             "info",
             "Real-machine mode: read-only scan of this computer's MCP configs. Results go to an isolated "
             "registry in `data/local/`. Usernames are masked as `~` and secrets are redacted."
-            if picked == "real" else "Back to the deterministic demo fixtures.",
+            if picked == "real" else
+            "Live agents: real agent runs captured by the AutoDiscover tap (local) and collector (cloud n8n). "
+            "Click **Run Agent Scenarios** in the sidebar, then follow the tabs. Results go to `data/agents/`."
+            if picked == "agents" else "Back to the deterministic demo fixtures.",
         )
         st.rerun()
 
     # ── Section 2: Demo Controls ──
     st.divider()
     sidebar_section("Demo")
-    if real_mode():
+    if agents_mode():
+        if st.button("Run Agent Scenarios", width="stretch", type="primary",
+                     help="Runs five scripted agent scenarios (no LLM) and captures every tool call."):
+            from demo.agents.run_scenarios import run_all
+            with st.spinner("Running agents through the tap and the collector..."):
+                st.session_state.agent_run = run_all(AGENT_ROOT, say=lambda _msg: None)
+            mode, tab = st.session_state.mode, st.session_state.get("active_tab")
+            run = st.session_state.agent_run
+            st.session_state.clear()
+            st.session_state.mode, st.session_state.agent_run = mode, run
+            if tab:
+                st.session_state.active_tab = tab
+            run_discovery()
+            st.session_state.flash = ("success", f"Agents ran. {run['events']} tool calls captured and minted "
+                                      "passports are ready. Link the events in **04 Linking & Incidents**.")
+            st.rerun()
+    elif real_mode():
         if st.button("Clear Local Scan Registry", width="stretch", type="primary"):
             for f in LOCAL_DATA.glob("*.json"):
                 f.unlink()
@@ -476,12 +532,12 @@ with st.sidebar:
         }
         st.rerun()
 
-    v2_toggle = False if real_mode() else st.toggle(
+    v2_toggle = False if not demo_mode() else st.toggle(
         "Load v2 Config Update",
         value=st.session_state.v2_active,
         help="Simulates editing claude_desktop_config.json in place with the v2 contents.",
     )
-    if not real_mode() and v2_toggle != st.session_state.v2_active:
+    if demo_mode() and v2_toggle != st.session_state.v2_active:
         st.session_state.v2_active = v2_toggle
         restore_live_configs(v2=v2_toggle)
         run_discovery()
@@ -503,7 +559,9 @@ with st.sidebar:
             )
         st.rerun()
 
-    if real_mode():
+    if agents_mode():
+        st.caption("Settings source: **live agent configs** in `data/agents/live/`")
+    elif real_mode():
         st.caption("Settings source: **this computer**")
     else:
         st.caption(f"Settings file: **{'v2, edited' if st.session_state.v2_active else 'v1, original'}**")
@@ -516,7 +574,7 @@ with st.sidebar:
     audit = eng.build_audit_report(
         candidates=st.session_state.candidates,
         raw_secret_values=raw_secret_values(),
-        mode="real-local-machine" if real_mode() else "demo",
+        mode="real-local-machine" if real_mode() else "live-agents" if agents_mode() else "demo",
     )
     integ, scan = audit["integrity"], audit["secret_scan"]
     st.markdown(
@@ -531,9 +589,9 @@ with st.sidebar:
         f'{status_badge(scan["status"])}</div></div>',
         unsafe_allow_html=True,
     )
-    st.caption("Stored in `data/local/passports.json`" if real_mode() else "Stored in `data/passports.json`")
+    st.caption(f"Stored in `{store_label()}/passports.json`")
     stamp = audit["generated_at"][:19].replace("-", "").replace(":", "") + "Z"
-    base = f"autodiscover-audit-{'local' if real_mode() else 'demo'}-{stamp}"
+    base = f"autodiscover-audit-{'local' if real_mode() else 'agents' if agents_mode() else 'demo'}-{stamp}"
     try:
         bundle = build_audit_bundle(audit, eng.data_dir, inputs=[APPROVALS_FILE, eng.policies_path])
     except PermissionError as exc:
@@ -554,6 +612,37 @@ st.markdown(
     '&amp; passports</span></div></div>',
     unsafe_allow_html=True,
 )
+
+
+def _read_scenarios() -> dict[str, Any]:
+    try:
+        return json.loads((AGENTS / "scenarios.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def agent_run_html(run: dict[str, Any], events: list[dict[str, Any]], linked: set[str]) -> str:
+    """One card per scenario: where it ran, what was captured, and what AutoDiscover expects to conclude."""
+    by_id = {e["event_id"]: e for e in events}
+    cards = []
+    for sc in run.get("scenarios", []):
+        rows = "".join(
+            f'<div class="mono" style="font-size:12.5px">{badge(ORIGIN_LABEL.get(e["capture"]["origin"], "?"), "slate")} '
+            f'{html.escape(e["tool_call"])} → {html.escape(e["target"])} '
+            f'{badge(e["result"].upper(), "bad" if e["result"] == "denied" else "neutral")}'
+            f'{badge("LINKED", "ok") if e["event_id"] in linked else ""}</div>'
+            for e in (by_id[i] for i in sc["event_ids"] if i in by_id)
+        ) or f'<div class="muted">{html.escape(sc.get("note") or "No actions captured.")}</div>'
+        state = {"skipped": badge("SKIPPED", "warn"), "failed": badge("FAILED", "bad")}.get(sc["status"], "")
+        cards.append(
+            f'<div class="card"><h4>Scenario {html.escape(sc["id"])} · {html.escape(sc["title"])} '
+            f'{badge(sc["where"].upper(), "slate")}{state}</h4>{rows}'
+            f'<div class="muted" style="margin-top:6px">Expected: {html.escape(sc["expect"])}</div></div>'
+        )
+    server = html.escape(str(run.get("fs_server", "UNKNOWN")))
+    return (f'<div class="muted" style="margin-bottom:6px">Captured from real runs. File server: {server}. '
+            f'n8n: {"ran" if run.get("n8n") else "not installed here, so the cloud scenario was skipped"}.</div>'
+            + "".join(cards))
 
 
 def overview_html() -> str:
@@ -632,6 +721,11 @@ with tab1:
         st.caption("Read-only scan of the well-known Claude Desktop, Cursor and VS Code MCP config locations "
                    "on this computer. Nothing is written to those files.")
         scan_label = "Scan Real Local Machine"
+    elif agents_mode():
+        st.caption("Scans the configs the agents ran with: "
+                   + (", ".join(f"`configs/{p.name}`" for p in agent_config_paths())
+                      or "none yet. Click **Run Agent Scenarios** in the sidebar first."))
+        scan_label = "Scan Local MCP Configs"
     else:
         st.caption("Scans local MCP configs: " + ", ".join(f"`{c}`" for c in CONFIGS))
         scan_label = "Scan Local MCP Configs"
@@ -663,7 +757,7 @@ with tab1:
             "source_path": c["source_path"],
             "command": c["command"],
             "owner": c["owner"],
-            "discovered_on": "Demo fixtures" if not real_mode() else discovered_on_label(eng.data_dir, c["passport_id"], demo=False),
+            "discovered_on": "Demo fixtures" if demo_mode() else discovered_on_label(eng.data_dir, c["passport_id"], demo=False),
             "version": c["version"],
             "access_mode": c["access_mode"],
         } for c in candidates], width="stretch", hide_index=True, column_config={
@@ -704,7 +798,7 @@ with tab1:
         if leaks:
             st.error(f"Secret value found in: {', '.join(sorted(set(leaks)))}")
         else:
-            store = "data/local/*.json" if real_mode() else "data/*.json"
+            store = f"{store_label()}/*.json"
             st.success(f"Disk check: 0 of {len(raw_secret_values())} raw secret values appear anywhere in `{store}`.")
 
 # ── 02 Identity & Review ──────────────────────────────────────────────────────
@@ -796,6 +890,10 @@ with tab3:
         if not changed:
             st.info("No config drift on confirmed passports. To see it, mint a tool in **02 Identity & Review**, edit that tool's "
                     "args in your MCP config, then re-scan in **01 Discover**.")
+    elif agents_mode():
+        if not changed:
+            st.info("Scenario E removes `--read-only` from the Claude Desktop agent config during the run. Click "
+                    "**Run Agent Scenarios** in the sidebar and the change shows up here, on the same passport.")
     elif not st.session_state.scanned:
         st.info("Run discovery in **01 Discover** and mint `filesystem-mcp` in **02 Identity & Review** first.")
     elif not st.session_state.v2_active:
@@ -813,8 +911,9 @@ with tab3:
         if stored.get("access_mode") != c["access_mode"] and c["access_mode"] == UNKNOWN:
             reason = (
                 f'<div style="margin-top:10px"><b>Why access is now {badge("UNKNOWN", "unknown")}:</b> '
-                "the read-only evidence (<span class='mono'>,ro</span> on the bind mount) is gone from the config. "
-                "We will not assume <i>read-write</i> either, so it stays UNKNOWN until a human reviews it.</div>"
+                + ("the <span class='mono'>--read-only</span> flag is gone from the config. " if agents_mode() else
+                   "the read-only evidence (<span class='mono'>,ro</span> on the bind mount) is gone from the config. ")
+                + "We will not assume <i>read-write</i> either, so it stays UNKNOWN until a human reviews it.</div>"
             )
         st.markdown(
             f'<div class="card drift">'
@@ -827,7 +926,7 @@ with tab3:
             f'{c["config_hash"][:12]}…</span></div>'
             f'<div style="margin-top:8px">{"".join(lines)}</div>{reason}'
             f'<div class="muted" style="margin-top:10px">The confirmed passport is unchanged. Drift is recorded in '
-            f'<span class="mono">data/metadata_changes.json</span>.</div></div>',
+            f'<span class="mono">{store_label()}/metadata_changes.json</span>.</div></div>',
             unsafe_allow_html=True,
         )
     log = eng.metadata_changes()
@@ -868,13 +967,45 @@ with tab4:
     if real_mode():
         st.info("Event linking runs on the demo's runtime event fixtures, whose sources point at the fixture "
                 "configs. Switch to **Demo fixtures** in the sidebar to link events.")
+    elif agents_mode() and not events:
+        st.info("No captured agent actions yet. Click **Run Agent Scenarios** in the sidebar: a scripted LangGraph "
+                "agent works through a real MCP file server behind the AutoDiscover tap, and an n8n workflow "
+                "reports its actions to the collector.")
     elif not passports:
         st.info("No passports yet. Scan in **01 Discover** and mint at least `filesystem-mcp` in **02 Identity & Review** before linking events.")
     else:
+        scen_of: dict[str, str] = {}
+        if agents_mode():
+            run = _read_scenarios()
+            scen_of = {eid: sc["id"] for sc in run.get("scenarios", []) for eid in sc["event_ids"]}
+            st.markdown(agent_run_html(run, events, {lk["event_id"] for lk in eng.linked_events()}),
+                        unsafe_allow_html=True)
+            unlinked = [e for e in events if e["event_id"] not in {lk["event_id"] for lk in eng.linked_events()}]
+            if unlinked:
+                with st.container(border=True):
+                    st.markdown(f"**Link every captured action** · {len(unlinked)} not linked yet. Each one is "
+                                "filed under the passport its own source names; nothing is guessed.")
+                    all_ok = st.checkbox(f"I grant explicit consent to link all {len(unlinked)} captured events",
+                                         key="consent_all_agents")
+                    if st.button("Link All Captured Events", width="stretch"):
+                        by_src = {(p["source_path"], p["tool_name"]): pid for pid, p in passports.items()}
+                        try:
+                            done = [eng.link_event(e, by_src[(e["source"]["config_path"], e["source"]["server_name"])],
+                                                   user_consent=all_ok)
+                                    for e in unlinked
+                                    if (e["source"]["config_path"], e["source"]["server_name"]) in by_src]
+                            refresh_policies()
+                            st.session_state.last_link = done[-1] if done else None
+                            st.session_state.last_error = None
+                        except PermissionError as exc:
+                            st.session_state.last_error = f"PermissionError: {exc}"
+                        st.rerun()
         left, right = st.columns([1, 1])
         with left:
             ev_labels = {
-                e["event_id"]: f'{e["event_id"]} · {e["source"]["server_name"]} · {e["tool_call"]} · {e["result"]}'
+                e["event_id"]: (f'{scen_of.get(e["event_id"], "?")} · {ORIGIN_LABEL.get(e["capture"]["origin"], "")} · '
+                                if agents_mode() else f'{e["event_id"]} · ')
+                + f'{e["source"]["server_name"]} · {e["tool_call"]} · {e["result"]}'
                 for e in events
             }
             ev_id = st.selectbox("Runtime event", list(ev_labels), format_func=ev_labels.get, key="ev_select")
@@ -927,7 +1058,7 @@ with tab4:
                 f'<div class="kv"><b>Passport</b><span class="mono">{short(link["passport_id"])}</span></div>'
                 f'<div class="kv"><b>Approval</b>{appr} {value_badge(link["approval_id"])} '
                 f'<span class="muted">{"Approved in" if link["approval_status"] == APPROVED else "No approval on file in"} '
-                f'fixtures/approvals.json</span></div>'
+                f'{html.escape(eng.approvals_path.relative_to(ROOT).as_posix())}</span></div>'
                 f'<div class="kv"><b>Runtime consent</b>{value_badge(link["runtime_consent_id"])}'
                 f'{" <span class=muted>The event log does not say whether the user agreed.</span>" if link["runtime_consent_id"] == UNKNOWN else ""}</div>'
                 f'<div class="kv"><b>Link consent</b>{badge("GRANTED", "ok")} <span class="muted">You ticked the consent box.</span></div>'
@@ -952,20 +1083,20 @@ with tab4:
                         f'<div class="kv"><b>Expected</b>{badge(inc["expected_behavior"], "ok")}</div>'
                         f'<div class="kv"><b>Approval</b>{badge(inc["approval_status"], "bad" if inc["approval_status"] != APPROVED else "ok")}</div>'
                         f'<div class="kv"><b>Timestamp</b><span class="mono">{html.escape(inc["timestamp"])}</span></div>'
-                        f'<div class="muted" style="margin-top:8px">Written to <span class="mono">data/incidents.json</span>.</div></div>',
+                        f'<div class="muted" style="margin-top:8px">Written to <span class="mono">{store_label()}/incidents.json</span>.</div></div>',
                         unsafe_allow_html=True,
                     )
 
         st.divider()
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("**Linked events** · `data/linked_events.json`")
+            st.markdown(f"**Linked events** · `{store_label()}/linked_events.json`")
             st.dataframe([{
                 "event": lk["event_id"], "passport": short(lk["passport_id"]), "tool_call": lk["tool_call"],
                 "timestamp": lk["timestamp"], "approval": lk["approval_status"], "flags": ", ".join(lk["flags"]) or "none",
             } for lk in eng.linked_events()], width="stretch", hide_index=True)
         with c2:
-            st.markdown("**Incident log** · `data/incidents.json`")
+            st.markdown(f"**Incident log** · `{store_label()}/incidents.json`")
             st.dataframe([{
                 "incident": i["incident_id"], "tool": i["tool_name"], "tool_call": i["tool_call"],
                 "timestamp": i["timestamp"], "result": i["result"],
@@ -991,7 +1122,7 @@ with tab5:
         format_func=lambda p: "All tools" if p is None else
         f'{map_passports[p]["tool_name"]} @ {map_passports[p]["source_path"]} · {short(p)}',
     )
-    found_on = {p: discovered_on_label(store, p, demo=not real_mode())
+    found_on = {p: discovered_on_label(store, p, demo=demo_mode())
                 for p in set(map_passports) | {c["passport_id"] for c in st.session_state.candidates}}
     live = live_map_html(store, candidates=st.session_state.candidates, focus=focus, found_on=found_on)
     if live is None:
