@@ -1,12 +1,20 @@
 {
-  "_comment": "Declarative policy-as-code rules. Allowed conditions: passport -> category_in, approval, field_is_unknown; change -> access_mode_transition, approval; event -> action_mutating, approval. All conditions in a rule must hold. Nothing here is executed as code.",
+  "_comment": "Declarative policy-as-code rules. Allowed conditions: passport -> category_in, approval, field_is_unknown; change -> access_mode_transition, approval; event -> action_mutating, approval; activity -> check (a named, built-in timeline detector), max_skew_seconds. All conditions in a rule must hold. Nothing here is executed as code.",
   "rules": [
     {
       "rule_id": "POL-001",
       "title": "Unapproved database MCP server",
       "severity": "high",
       "applies_to": "passport",
-      "when": {"category_in": ["database"], "approval": ["missing", "pending"]},
+      "when": {
+        "category_in": [
+          "database"
+        ],
+        "approval": [
+          "missing",
+          "pending"
+        ]
+      },
       "explanation": "The server's config shows explicit database evidence (package, image or command) and approvals.json has no approved record for this passport."
     },
     {
@@ -14,7 +22,12 @@
       "title": "Access mode downgraded to UNKNOWN after a config edit",
       "severity": "high",
       "applies_to": "change",
-      "when": {"access_mode_transition": {"from": "read-only", "to": "UNKNOWN"}},
+      "when": {
+        "access_mode_transition": {
+          "from": "read-only",
+          "to": "UNKNOWN"
+        }
+      },
       "explanation": "The confirmed passport had proven read-only access, but the edited config no longer carries that evidence. Access is now UNKNOWN until a human re-reviews it."
     },
     {
@@ -22,7 +35,9 @@
       "title": "Owner not attested",
       "severity": "medium",
       "applies_to": "passport",
-      "when": {"field_is_unknown": "owner"},
+      "when": {
+        "field_is_unknown": "owner"
+      },
       "explanation": "No owner is declared in the config. AutoDiscover will not guess one, so accountability is missing."
     },
     {
@@ -30,7 +45,9 @@
       "title": "Version not attested",
       "severity": "low",
       "applies_to": "passport",
-      "when": {"field_is_unknown": "version"},
+      "when": {
+        "field_is_unknown": "version"
+      },
       "explanation": "No version is declared in the config, so the exact build in use cannot be pinned or audited."
     },
     {
@@ -38,8 +55,144 @@
       "title": "Mutating action without approval",
       "severity": "critical",
       "applies_to": "event",
-      "when": {"action_mutating": true, "approval": ["missing"]},
+      "when": {
+        "action_mutating": true,
+        "approval": [
+          "missing"
+        ]
+      },
       "explanation": "A consented runtime event shows a write/delete-type action that no approval record covers."
+    },
+    {
+      "rule_id": "POL-006",
+      "title": "Activity log rewritten since its checkpoint",
+      "severity": "critical",
+      "applies_to": "activity",
+      "when": {
+        "check": "log_rewritten"
+      },
+      "explanation": "The observer log no longer starts with the bytes saved in its LENGTH:SHA256 checkpoint. Earlier records were changed or removed."
+    },
+    {
+      "rule_id": "POL-007",
+      "title": "Read-only run changed a file",
+      "severity": "high",
+      "applies_to": "activity",
+      "when": {
+        "check": "read_only_write"
+      },
+      "explanation": "The observer started this run with read-only access, yet it recorded a file change under that run."
+    },
+    {
+      "rule_id": "POL-008",
+      "title": "Protected file changed",
+      "severity": "high",
+      "applies_to": "activity",
+      "when": {
+        "check": "protected_write"
+      },
+      "explanation": "The observer marked the file as protected. Check whether the change was expected."
+    },
+    {
+      "rule_id": "POL-009",
+      "title": "File change without approval",
+      "severity": "high",
+      "applies_to": "activity",
+      "when": {
+        "check": "approval_missing"
+      },
+      "explanation": "The observer recorded approval as missing or denied for this file change."
+    },
+    {
+      "rule_id": "POL-010",
+      "title": "File change with no identified actor",
+      "severity": "medium",
+      "applies_to": "activity",
+      "when": {
+        "check": "unknown_actor"
+      },
+      "explanation": "No observed run started the change. The actor stays UNKNOWN until stronger evidence appears."
+    },
+    {
+      "rule_id": "POL-011",
+      "title": "Agent gained write access",
+      "severity": "high",
+      "applies_to": "activity",
+      "when": {
+        "check": "access_escalation"
+      },
+      "explanation": "The same observer identity (deployment, agent, instance) ran read-only before and with write access now."
+    },
+    {
+      "rule_id": "POL-012",
+      "title": "Tool configuration file changed",
+      "severity": "medium",
+      "applies_to": "activity",
+      "when": {
+        "check": "config_file_write"
+      },
+      "explanation": "An MCP or client config file was changed, which can add tools or widen what an agent can reach. Re-scan in 01 Discover."
+    },
+    {
+      "rule_id": "POL-013",
+      "title": "Gap or repeat in the observer log",
+      "severity": "medium",
+      "applies_to": "activity",
+      "when": {
+        "check": "sequence_gap"
+      },
+      "explanation": "The observer's sequence numbers skip or repeat. Check collector coverage before relying on this timeline."
+    },
+    {
+      "rule_id": "POL-014",
+      "title": "Event and observer clocks disagree",
+      "severity": "low",
+      "applies_to": "activity",
+      "when": {
+        "check": "clock_drift",
+        "max_skew_seconds": 300
+      },
+      "explanation": "The event time differs from the observer time by more than the allowed skew. Check time sync or delayed delivery."
+    },
+    {
+      "rule_id": "POL-015",
+      "title": "Agent's own report disagrees with the observer",
+      "severity": "medium",
+      "applies_to": "activity",
+      "when": {
+        "check": "self_report_mismatch"
+      },
+      "explanation": "A record the agent reported about itself is missing from, or different in, the independent observer log."
+    },
+    {
+      "rule_id": "POL-016",
+      "title": "Agent renamed or moved under the same identity",
+      "severity": "low",
+      "applies_to": "activity",
+      "when": {
+        "check": "identity_relabel"
+      },
+      "explanation": "The observer supplied the same identity with a different name or location. Same agent, new label."
+    },
+    {
+      "rule_id": "POL-017",
+      "title": "Activity without confirmed onboarding",
+      "severity": "medium",
+      "applies_to": "activity",
+      "when": {
+        "check": "onboarding_missing"
+      },
+      "explanation": "The observer reported that this agent's onboarding was not confirmed."
+    },
+    {
+      "rule_id": "POL-018",
+      "title": "Run reference reused",
+      "severity": "medium",
+      "applies_to": "activity",
+      "when": {
+        "check": "run_reuse"
+      },
+      "explanation": "Two runs started with the same run reference, so which execution did what is UNKNOWN."
     }
   ]
 }

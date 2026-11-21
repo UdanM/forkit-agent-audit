@@ -63,6 +63,8 @@ if os.environ.get("AUTODISCOVER_PER_SESSION") == "1":
 LIVE = DATA / "live_configs"                 # base_dir for discovery
 LOCAL_DATA = DATA / "local"                  # isolated registry for real-machine scans
 LIVE_FIXTURES = LIVE / "fixtures"
+ACTIVITY_FIXTURES = FIXTURES / "activity"
+ACTIVITY_LIVE = DATA / "activity_live"       # demo copy of the observer log, so tampering never touches fixtures/
 CLAUDE = "fixtures/claude_desktop_config.json"
 CURSOR = "fixtures/cursor_mcp.json"
 CONFIGS = [CLAUDE, CURSOR]
@@ -286,6 +288,8 @@ TAB_PURPOSE = {
        "permission. Actions without approval, or outside what the tool may do, become incidents.",
     5: "The whole chain on one page: where each tool was configured, its ID card, what it did, and what still "
        "needs attention.",
+    6: "Which agent run did what, who delegated it, and whether the activity log itself can be trusted. Agents are "
+       "identified only by an independent observer, never by their own word, and an unknown actor stays UNKNOWN.",
 }
 
 
@@ -305,6 +309,8 @@ DEMO_HINTS = {
        "Then evt-0003 on the filesystem-mcp passport (blocked). evt-0004 names only `postgres-mcp`, which two "
        "configs share, so it is ambiguous: record it for review instead. Then open **05 Provenance Map**.",
     5: "Walk the top diagram once, then read the evt-0002 row of the live map from left to right.",
+    6: "Click **Save Log Checkpoint**, read the helper's delegated write to the protected file, then click "
+       "**Simulate Log Tampering**: the rewritten log raises a critical finding.",
 }
 
 
@@ -521,6 +527,7 @@ with st.sidebar:
         for f in DATA.glob("*.json"):
             f.unlink()
         shutil.rmtree(LIVE, ignore_errors=True)
+        shutil.rmtree(ACTIVITY_LIVE, ignore_errors=True)
         st.session_state.clear()
         restore_live_configs(v2=False)
         st.session_state.flash = ("success", "Demo reset: registry, links, incidents and changes cleared.")
@@ -717,9 +724,9 @@ elif proof:
         st.json({"before_restart": proof["before"], "after_restart": proof["after"]})
 
 # Keyed, stateful tabs: clicking a button inside a tab keeps you on that tab.
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
     ["01 Discover", "02 Identity & Review", "03 Drift & Governance", "04 Linking & Incidents",
-     "05 Provenance Map"],
+     "05 Provenance Map", "06 Activity Timeline"],
     key="active_tab",
     on_change="rerun",
 )
@@ -1184,3 +1191,120 @@ with tab5:
                    "runtime events linked to that passport, and any incident they caused. Open checks are drift and "
                    "policy findings still waiting for a reviewer. Red means no approval or an incident. A dashed "
                    "passport has not been issued yet.")
+
+
+# ── 06 Activity Timeline ──────────────────────────────────────────────────────
+
+_SEV_KIND = {"critical": "bad", "high": "bad", "medium": "warn", "low": "slate"}
+
+
+def activity_sources() -> tuple[str, Path | None, Path | None]:
+    """(label, observer log, self-reported log) for the current mode. Logs are only read."""
+    if demo_mode():
+        ACTIVITY_LIVE.mkdir(parents=True, exist_ok=True)
+        for name in ("observer.jsonl", "agent_reported.jsonl"):
+            if not (ACTIVITY_LIVE / name).exists():
+                shutil.copy(ACTIVITY_FIXTURES / name, ACTIVITY_LIVE / name)
+        return "demo", ACTIVITY_LIVE / "observer.jsonl", ACTIVITY_LIVE / "agent_reported.jsonl"
+    if agents_mode():
+        log = AGENTS / "pilot" / "observer.jsonl"
+        return "agents-pilot", (log if log.is_file() else None), None
+    obs = st.session_state.get("activity_observer", "").strip()
+    rep = st.session_state.get("activity_reported", "").strip()
+    obs_p = Path(obs).expanduser() if obs else None
+    rep_p = Path(rep).expanduser() if rep else None
+    return ("local", obs_p if obs_p and obs_p.is_file() else None, rep_p if rep_p and rep_p.is_file() else None)
+
+
+with tab6:
+    st.subheader("Who did what, and can the log be trusted")
+    tab_purpose(6)
+    demo_hint(6)
+    if real_mode():
+        c1, c2 = st.columns(2)
+        c1.text_input("Observer activity log (JSON Lines)", key="activity_observer",
+                      placeholder="~/forkit-pilot/observer.jsonl",
+                      help="Written by an independent observer: a launcher, workspace monitor or the AutoDiscover pilot.")
+        c2.text_input("Agent's own report (optional)", key="activity_reported",
+                      help="Rows an agent reports about itself. Compared with the observer, never trusted on their own.")
+    label, obs_log, rep_log = activity_sources()
+    if obs_log is None:
+        if agents_mode():
+            st.info("No pilot log yet. Click **Run Agent Scenarios** in the sidebar: the delegated-helper pilot "
+                    "writes an observer log here.")
+        else:
+            st.info("Point AutoDiscover at an observer log to build the timeline. The format is documented in "
+                    "AUTODISCOVER_README.md (Activity timeline).")
+    else:
+        b1, b2, b3 = st.columns(3)
+        if b1.button("Save Log Checkpoint", width="stretch",
+                     help="Remembers LENGTH:SHA256 of the log as it is now. Later reads must start with the same bytes."):
+            cp = eng.save_log_checkpoint(label, obs_log)
+            st.session_state.flash = ("success", f"Checkpoint saved: `{cp[:28]}...`" if cp else "Log is empty.")
+            st.rerun()
+        if demo_mode():
+            if b2.button("Simulate Log Tampering", width="stretch",
+                         help="Rewrites one earlier record in the demo copy, as an agent covering its tracks would."):
+                text = obs_log.read_text(encoding="utf-8")
+                obs_log.write_text(text.replace('"protected": true', '"protected": null', 1), encoding="utf-8")
+                st.rerun()
+            if b3.button("Restore Original Log", width="stretch"):
+                shutil.copy(ACTIVITY_FIXTURES / "observer.jsonl", obs_log)
+                st.rerun()
+        tl = eng.activity_timeline(label, obs_log, rep_log)
+        cp_state = {"none": ("No checkpoint saved yet", "unknown"), "intact": ("Log matches its checkpoint", "ok"),
+                    "rewritten": ("Log REWRITTEN since checkpoint", "bad"),
+                    "truncated": ("Log TRUNCATED since checkpoint", "bad"),
+                    "invalid": ("Saved checkpoint is invalid", "bad")}[tl["checkpoint"]]
+        st.markdown(
+            f'<div class="card"><h4>Evidence</h4>'
+            f'<div class="kv"><b>Log integrity</b>{badge(cp_state[0], cp_state[1])}</div>'
+            f'<div class="kv"><b>Records</b><span class="mono">{len(tl["runs"])} runs · {len(tl["agents"])} agents · '
+            f'{len(tl["actions"])} actions · {len(tl["self_reported"])} self-reported</span></div>'
+            f'<div class="kv"><b>Rejected rows</b><span class="mono">{len(tl["rejected"]["observer"])} observer · '
+            f'{len(tl["rejected"]["self_reported"])} self-reported</span></div></div>',
+            unsafe_allow_html=True)
+
+        st.markdown("**What needs review**")
+        if not tl["findings"]:
+            st.success("No activity rule fired.")
+        for f in tl["findings"]:
+            st.markdown(
+                f'<div class="card"><h4>{badge(f["severity"].upper(), _SEV_KIND.get(f["severity"], "neutral"))} '
+                f'{html.escape(f["rule_id"])} · {html.escape(f["title"])}</h4>'
+                f'<div class="muted">{html.escape(f["explanation"])}</div>'
+                f'<div class="kv"><b>Records</b><span class="mono">{html.escape(", ".join(f["record_ids"]))}</span></div>'
+                f'</div>', unsafe_allow_html=True)
+
+        col = st.column_config.TextColumn
+        st.markdown("**Runs and delegation** · one agent identity can have many runs; a helper keeps its own run")
+        st.dataframe([{
+            "run": r["run_id"], "label": r["label"], "agent": short(r["agent"]) if r["agent"] != UNKNOWN else UNKNOWN,
+            "delegated_by": r["delegated_by"] or "", "access": r["access"], "tool": r["tool"],
+            "started": r["started_at"], "pid": r["pid"] if r["pid"] is not None else "",
+        } for r in tl["runs"]], width="stretch", hide_index=True, column_config={
+            "agent": col("Agent ID", help="From deployment + agent_id + instance_id on the observer's run record."),
+            "delegated_by": col("Delegated by"),
+        })
+        st.markdown("**Actions**")
+        st.dataframe([{
+            "record": a["record_id"], "time": a["time"], "actor": a["actor"], "why": a["actor_reason"],
+            "initiated_by": a["initiated_by"] or "", "action": a.get("operation") or a.get("tool_call", ""),
+            "path_or_target": a.get("path") or a.get("target", ""),
+            "approval": {True: "yes", False: "no"}.get(a.get("approval"), UNKNOWN),
+            "protected": {True: "yes", False: "no"}.get(a.get("protected"), UNKNOWN),
+        } for a in tl["actions"]], width="stretch", hide_index=True, column_config={
+            "why": col("Actor evidence"), "path_or_target": col("Path / target", width="large"),
+        })
+        if tl["shared_files"]:
+            st.markdown("**Files touched by more than one actor** · overlap is a lead for review, not proof")
+            st.dataframe([{"path": p, "actors": ", ".join(who)} for p, who in tl["shared_files"].items()],
+                         width="stretch", hide_index=True)
+        if tl["self_reported"]:
+            st.markdown("**The agent's own report, checked against the observer**")
+            st.dataframe([{
+                "record": r["record_id"], "run": r["run_id"], "claim": r.get("path") or r.get("label") or r["kind"],
+                "verdict": r["verdict"],
+            } for r in tl["self_reported"]], width="stretch", hide_index=True)
+        st.caption("Evidence model ported from UdanM/forkit-agent-audit. Rules POL-006 to POL-018 live in "
+                   "fixtures/policies.json; diffs are reduced to a hash and size, never stored.")

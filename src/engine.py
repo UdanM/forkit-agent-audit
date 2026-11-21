@@ -627,6 +627,8 @@ _CONDITIONS: dict[str, set[str]] = {
     "passport": {"category_in", "approval", "field_is_unknown"},
     "change": {"access_mode_transition", "approval"},
     "event": {"action_mutating", "approval"},
+    # Activity timeline rules (src/timeline.py): pick a fixed detector by name.
+    "activity": {"check", "max_skew_seconds"},
 }
 _UNKNOWN_FIELDS = {"owner", "version", "access_mode", "client", "command"}
 
@@ -686,6 +688,14 @@ def load_policies(path: str | Path) -> list[dict[str, Any]]:
                 raise ValueError(f"{where}: access_mode_transition needs exactly 'from' and 'to'")
             if cond == "action_mutating" and not isinstance(val, bool):
                 raise ValueError(f"{where}: action_mutating must be true or false")
+            if cond == "check":
+                from .timeline import ACTIVITY_CHECKS  # local import: timeline is a leaf module
+                if val not in ACTIVITY_CHECKS:
+                    raise ValueError(f"{where}: check must be one of {sorted(ACTIVITY_CHECKS)}")
+            if cond == "max_skew_seconds" and (type(val) is not int or not 0 < val <= 86400):
+                raise ValueError(f"{where}: max_skew_seconds must be an integer from 1 to 86400")
+        if r["applies_to"] == "activity" and "check" not in when:
+            raise ValueError(f"{where}: activity rules need a 'check'")
     return rules
 
 
@@ -828,7 +838,7 @@ def evaluate_policies(
 # ── Audit export helpers ───────────────────────────────────────────────────────
 
 STORE_FILES = ("passports.json", "metadata_changes.json", "linked_events.json", "incidents.json",
-               "policy_findings.json", "review_queue.json")
+               "policy_findings.json", "review_queue.json", "activity_findings.json", "log_checkpoints.json")
 _LEAK_PATTERNS: dict[str, re.Pattern[str]] = {
     "url_password": re.compile(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^:/@\s\"]+:(?!\[REDACTED\]@)[^@\s\"]+@"),
     "token_prefix": re.compile(
@@ -973,6 +983,12 @@ def render_audit_markdown(report: dict[str, Any]) -> str:
             [r.get("review_id"), r.get("event_id"), r.get("tool_call"), r.get("attribution"),
              len(r.get("candidate_passport_ids", [])), r.get("reason")] for r in report.get("review_queue", [])
         ]),
+        "## Activity timeline findings",
+        "",
+        _md_table(["Log", "Checkpoint", "Rule", "Severity", "Title", "Records"], [
+            [label, block.get("checkpoint"), f["rule_id"], f["severity"], f["title"], ", ".join(f["record_ids"])]
+            for label, block in sorted((report.get("activity") or {}).items()) for f in block.get("findings", [])
+        ]),
         "## Policy findings",
         "",
         _md_table(["Rule", "Severity", "Title", "Tool", "Evidence"], [
@@ -1059,6 +1075,8 @@ class AutoDiscoverEngine:
         self.incidents_path = self.data_dir / "incidents.json"
         self.changes_path = self.data_dir / "metadata_changes.json"
         self.review_path = self.data_dir / "review_queue.json"
+        self.activity_path = self.data_dir / "activity_findings.json"
+        self.checkpoints_path = self.data_dir / "log_checkpoints.json"
 
     # ── Reads ──────────────────────────────────────────────────────────────────
 
@@ -1073,6 +1091,40 @@ class AutoDiscoverEngine:
 
     def review_queue(self) -> list[dict[str, Any]]:
         return _read_json(self.review_path, [])
+
+    # ── Activity timeline (merge M4, see src/timeline.py) ─────────────────────
+
+    def log_checkpoints(self) -> dict[str, dict[str, Any]]:
+        return _read_json(self.checkpoints_path, {})
+
+    def activity_findings(self) -> dict[str, Any]:
+        return _read_json(self.activity_path, {})
+
+    def save_log_checkpoint(self, label: str, observer_log: str | Path) -> str | None:
+        """Remember ``LENGTH:SHA256`` of a log's complete lines under a label."""
+        from .timeline import make_checkpoint, read_log
+        data = read_log(observer_log)
+        if not data:
+            return None
+        cps = self.log_checkpoints()
+        cps[label] = {"checkpoint": make_checkpoint(data), "saved_at": _now()}
+        _write_json(self.checkpoints_path, cps)
+        return cps[label]["checkpoint"]
+
+    def activity_timeline(
+        self, label: str, observer_log: str | Path, reported_log: str | Path | None = None
+    ) -> dict[str, Any]:
+        """Build the timeline for one observer log, check its saved checkpoint, and
+        persist the activity findings under ``label``. Never writes to the logs."""
+        from .timeline import timeline_from_files
+        saved = self.log_checkpoints().get(label, {}).get("checkpoint")
+        tl = timeline_from_files(observer_log, reported_log, rules=self.policies(), checkpoint=saved,
+                                 namespace=label)
+        store = self.activity_findings()
+        store[label] = {"evaluated_at": _now(), "checkpoint": tl["checkpoint"], "findings": tl["findings"],
+                        "runs": len(tl["runs"]), "agents": len(tl["agents"]), "actions": len(tl["actions"])}
+        _write_json(self.activity_path, store)
+        return tl
 
     def metadata_changes(self) -> list[dict[str, Any]]:
         return _read_json(self.changes_path, [])
@@ -1257,6 +1309,7 @@ class AutoDiscoverEngine:
             "missing_approval_link_ids": [x["link_id"] for x in links if x.get("approval_status") == MISSING_APPROVAL],
             "incidents": incidents,
             "review_queue": self.review_queue(),
+            "activity": self.activity_findings(),
             "policy_findings": findings,
             "integrity": {
                 "status": "PASS" if not mismatches else "FAIL",
