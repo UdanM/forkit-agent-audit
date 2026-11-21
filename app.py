@@ -19,11 +19,14 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import shutil
+import uuid
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
+from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 from src.discovery_host import discovered_on_label, machine_name, record_discovery
 from src.engine import (
@@ -45,6 +48,13 @@ from src.live_map_html import lifecycle_html, live_map_html
 ROOT = Path(__file__).resolve().parent
 FIXTURES = ROOT / "fixtures"
 DATA = ROOT / "data"
+# Hosted demo (e.g. Streamlit Community Cloud): set AUTODISCOVER_PER_SESSION=1 so every visitor gets
+# their own data folder and two people clicking at once never see each other's passports.
+if os.environ.get("AUTODISCOVER_PER_SESSION") == "1":
+    # Keyed by Streamlit's browser-session id, which survives the in-app "Simulate Restart" (that only
+    # clears st.session_state), so a visitor's own registry is still there to be recognized.
+    _ctx = get_script_run_ctx()
+    DATA = DATA / "sessions" / ((_ctx.session_id if _ctx else uuid.uuid4().hex).replace("-", "")[:16])
 LIVE = DATA / "live_configs"                 # base_dir for discovery
 LOCAL_DATA = DATA / "local"                  # isolated registry for real-machine scans
 LIVE_FIXTURES = LIVE / "fixtures"

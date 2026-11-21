@@ -261,6 +261,23 @@ streamlit run app.py
 
 ---
 
+
+### Share it online (Streamlit Community Cloud)
+
+1. Sign in at [share.streamlit.io](https://share.streamlit.io) with the GitHub account that owns this repository.
+2. Click **Create app**, then **Deploy a public app from GitHub**.
+3. Repository `eren-mutlu/forkit-autodiscover-hackathon`, branch `main`, main file path `app.py`.
+4. Open **Advanced settings**: choose Python 3.12, and paste this into **Secrets** so every visitor gets their own demo data:
+   ```toml
+   AUTODISCOVER_PER_SESSION = "1"
+   ```
+5. Click **Deploy**. Dependencies come from `requirements.txt`; the first start takes about a minute.
+
+On the hosted app, demo mode works as on a laptop. **Scan Real Local Machine** scans the cloud server, so it
+correctly reports 0 configs; run the app locally to scan your own computer.
+
+The pitch cover slide is in [`docs/cover/`](docs/cover/autodiscover-cover.pdf) (PDF and PNG).
+
 ## 90-second demo script
 
 Start from **1-Click Reset Demo State** in the sidebar. Each tab shows a *Next demo step* hint.
