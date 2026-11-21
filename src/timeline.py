@@ -130,6 +130,13 @@ def parse_row(raw: Any) -> dict[str, Any]:
             if raw[key] is not None and not isinstance(raw[key], bool):
                 raise ValueError(f"{key} must be true, false or null")
             row[key] = raw[key]
+    if raw.get("actor_type") == "human":
+        if kind != "file_write" or row["run_id"] is not None:
+            raise ValueError("human file edits cannot claim an agent run")
+        if type(raw.get("simulated", False)) is not bool:
+            raise ValueError("simulated must be true or false")
+        row.update(actor_type="human", human_id=_ident(raw.get("human_id")),
+                   human_label=_text(raw.get("human_label")), simulated=raw.get("simulated", False))
     if kind == "run_started":
         if row["run_id"] is None:
             raise ValueError("run_started needs run_id")
@@ -337,7 +344,13 @@ def build_timeline(
             continue
         start = eligible(r, r["run_id"])
         run = runs[(r["deployment"], r["run_id"])] if start else None
-        if start is None:
+        actor_type = "agent" if start else "unknown"
+        actor = (start.get("label") or UNKNOWN) if start else UNKNOWN
+        if r.get("actor_type") == "human":
+            actor_type = "human"
+            actor = r.get("human_label") or r.get("human_id") or UNKNOWN
+            actor_reason = "observer recorded a simulated human edit" if r["simulated"] else "observer recorded a human edit"
+        elif start is None:
             if not r["run_id"]:
                 actor_reason = "no run reference"
             elif (r["deployment"], r["run_id"]) in starts:
@@ -351,7 +364,8 @@ def build_timeline(
             "run_id": run["run_id"] if run else None,
             "deployment": r["deployment"],
             "agent": agent_identity(start, namespace) if start else UNKNOWN,
-            "actor": (start.get("label") or UNKNOWN) if start else UNKNOWN,
+            "actor": actor,
+            "actor_type": actor_type,
             "actor_reason": actor_reason,
             "initiated_by": None,
         }
@@ -360,10 +374,12 @@ def build_timeline(
                        approval=r.get("approval", UNKNOWN), protected=r.get("protected", UNKNOWN))
             if r.get("patch_sha256"):
                 act.update(patch_sha256=r["patch_sha256"], patch_bytes=r["patch_bytes"])
+            if actor_type == "human":
+                act.update(human_id=r["human_id"], simulated=r["simulated"])
             init = r.get("initiator_run_id")
             if init:
                 act["initiated_by"] = runs[(r["deployment"], init)]["run_id"] if eligible(r, init) else UNKNOWN
-            if run is None:
+            if run is None and (actor_type != "human" or actor == UNKNOWN):
                 flag("unknown_actor", r["id"])
             if r.get("protected") is True:
                 flag("protected_write", r["id"])

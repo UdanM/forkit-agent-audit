@@ -47,7 +47,7 @@ from src.engine import (
     workspace_config_locations,
 )
 from src.live_map_html import lifecycle_html, live_map_html
-from src.timeline import timeline_from_files
+from src.timeline import make_checkpoint, read_log, timeline_from_files
 from src.timeline_html import activity_feed_html, findings_html
 
 KIND_LABELS = {"mcp_server": "MCP server", "cli_tool": "CLI", "desktop_app": "Desktop app",
@@ -702,19 +702,31 @@ def ask_store() -> dict[str, Any]:
 
 with st.container(border=True, key="askpanel"):
     st.markdown("#### Ask Forkit")
-    st.caption("Ask about changes, tools, or findings. Try “What needs review?” or “Who changed "
-               "reports/q3/summary.md?”")
+    st.caption("Try “Who is the parent of the Report helper?”, “What did it change?”, or "
+               "“Who was the human in the workflow?”")
+    ask_label, ask_observer, ask_report = activity_sources()
     q_col, b_col = st.columns([6, 1])
     question = q_col.text_input("Question about Forkit records", key="ask_q", label_visibility="collapsed",
                                 max_chars=240, placeholder="Ask about a file, run, or event")
-    if b_col.button("Ask", width="stretch", type="primary") and question.strip():
-        st.session_state.ask_result = ask_question(question, ask_store())
-    res = st.session_state.get("ask_result")
+    submitted = b_col.button("Ask", width="stretch", type="primary") and question.strip()
+    ask_scope = None
+    if submitted or st.session_state.get("ask_result"):
+        saved = eng.log_checkpoints().get(ask_label, {}).get("checkpoint")
+        ask_scope = (ask_label, saved, tuple((str(path), make_checkpoint(read_log(path)))
+                                            for path in (ask_observer, ask_report) if path))
+    previous = st.session_state.get("ask_result") if st.session_state.get("ask_scope") == ask_scope else None
+    if submitted:
+        st.session_state.ask_result = ask_question(question, ask_store(), subject=(previous or {}).get("subject"))
+        st.session_state.ask_scope = ask_scope
+    res = st.session_state.get("ask_result") if st.session_state.get("ask_scope") == ask_scope else None
     if res:
         st.markdown(f"**{html.escape(res['answer'])}**")
         for c in res["citations"]:
             st.markdown(f'{badge(c["kind"], "neutral")} <span class="mono">{html.escape(c["id"])}</span> '
                         f'{html.escape(c["text"])}', unsafe_allow_html=True)
+        if any(c["kind"] in ("run", "action") for c in res["citations"]):
+            if st.button("Open Activity timeline", key="ask_open_timeline"):
+                st.session_state.active_tab = "Activity timeline"
         st.caption(f"Answered from {res.get('source', 'records')}. Matching runs on local records only"
                    + ("" if res.get("source", "records") != "records" else
                       "; set AUTODISCOVER_ASK_MODEL to an installed Ollama model to have it rephrased locally") + ".")
@@ -1353,11 +1365,12 @@ with tab6:
         col = st.column_config.TextColumn
         st.markdown("**Runs and delegation** · one agent identity can have many runs; a helper keeps its own run")
         st.dataframe([{
-            "run": r["run_id"], "label": r["label"], "agent": short(r["agent"]) if r["agent"] != UNKNOWN else UNKNOWN,
+            "record": r["record_id"], "run": r["run_id"], "label": r["label"],
+            "agent": short(r["agent"]) if r["agent"] != UNKNOWN else UNKNOWN,
             "delegated_by": r["delegated_by"] or "", "access": r["access"], "tool": r["tool"],
             "started": r["started_at"], "pid": r["pid"] if r["pid"] is not None else "",
         } for r in tl["runs"]], width="stretch", hide_index=True, column_config={
-            "run": col("Run"), "label": col("Label"),
+            "record": col("Record"), "run": col("Run"), "label": col("Label"),
             "agent": col("Agent ID", help="From deployment + agent_id + instance_id on the observer's run record."),
             "delegated_by": col("Delegated by"), "access": col("Access"), "tool": col("Tool"),
             "started": col("Started"), "pid": col("PID"),
@@ -1365,13 +1378,15 @@ with tab6:
         st.markdown("**All actions**")
         with st.expander("All actions as a table"):
             st.dataframe([{
-            "record": a["record_id"], "time": a["time"], "actor": a["actor"], "why": a["actor_reason"],
+            "record": a["record_id"], "time": a["time"], "actor": a["actor"], "actor_type": a.get("actor_type", ""),
+            "why": a["actor_reason"],
             "initiated_by": a["initiated_by"] or "", "action": a.get("operation") or a.get("tool_call", ""),
             "path_or_target": a.get("path") or a.get("target", ""),
             "approval": {True: "yes", False: "no"}.get(a.get("approval"), UNKNOWN),
             "protected": {True: "yes", False: "no"}.get(a.get("protected"), UNKNOWN),
             } for a in tl["actions"]], width="stretch", hide_index=True, column_config={
-                "record": col("Record"), "time": col("Time"), "actor": col("Actor"), "why": col("Actor evidence"),
+                "record": col("Record"), "time": col("Time"), "actor": col("Actor"),
+                "actor_type": col("Actor type"), "why": col("Actor evidence"),
                 "initiated_by": col("Initiated by"), "action": col("Action"),
                 "path_or_target": col("Path / target", width="large"), "approval": col("Approval"),
                 "protected": col("Protected"),

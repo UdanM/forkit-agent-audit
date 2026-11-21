@@ -12,13 +12,15 @@ What happens, with synthetic files only:
    declared access (``write``).
 2. The worker drafts a report, then asks to delegate: it prints
    ``delegate:finalize``.
-3. The observer starts a *helper* worker as a second process, with parent
+3. A simulated human reviewer adds a note to the draft.
+4. The observer starts a *helper* worker as a second process, with parent
    ``run_id`` and declared access ``read_only``. The helper still edits the
    protected summary file, as a misbehaving helper would.
-4. Around each worker the observer hashes every file in the pilot workspace and
+5. The simulated reviewer logs the handoff in the draft. Around each step,
+   the observer hashes every file in the pilot workspace and
    records what really changed (path, operation, diff hash and size). It never
    relies on what a worker says it did.
-5. Each worker also writes its own report (``agent_reported.jsonl``). The
+6. Each worker also writes its own report (``agent_reported.jsonl``). The
    helper describes itself as "read-only finisher", which the timeline flags
    as disagreeing with the observer.
 
@@ -105,6 +107,18 @@ def run_pilot(out: Path) -> dict[str, Any]:
         with observer_log.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(row) + "\n")
 
+    def record_changes(before: dict[str, tuple[str, str]], run_id: str | None, **evidence: Any) -> None:
+        after = _snapshot(workspace)
+        for path in sorted(set(before) | set(after)):
+            if before.get(path, ("",))[0] == after.get(path, ("",))[0]:
+                continue
+            op = "create" if path not in before else "delete" if path not in after else "write"
+            patch = "".join(difflib.unified_diff(
+                before.get(path, ("", ""))[1].splitlines(keepends=True),
+                after.get(path, ("", ""))[1].splitlines(keepends=True), f"a/{path}", f"b/{path}"))
+            observe("file_write", run_id, path=path, operation=op, patch=patch,
+                    protected=path == "reports/summary.md", **evidence)
+
     def launch(role: str, parent: str | None) -> tuple[str, str]:
         run_id = f"{role}-{uuid.uuid4().hex[:8]}"
         access = "write" if role == "parent" else "read_only"
@@ -117,22 +131,22 @@ def run_pilot(out: Path) -> dict[str, Any]:
             output, _ = proc.communicate(timeout=30)
             if proc.returncode:
                 raise subprocess.CalledProcessError(proc.returncode, cmd)
-        after = _snapshot(workspace)
-        for path in sorted(set(before) | set(after)):
-            if before.get(path, ("",))[0] == after.get(path, ("",))[0]:
-                continue
-            op = "create" if path not in before else "delete" if path not in after else "write"
-            patch = "".join(difflib.unified_diff(
-                before.get(path, ("", ""))[1].splitlines(keepends=True),
-                after.get(path, ("", ""))[1].splitlines(keepends=True), f"a/{path}", f"b/{path}"))
-            observe("file_write", run_id, path=path, operation=op, patch=patch, initiator_run_id=parent,
-                    approval=role == "parent", protected=path == "reports/summary.md")
+        record_changes(before, run_id, initiator_run_id=parent, approval=role == "parent")
         return run_id, output.strip()
 
+    def simulate_review(note: str) -> None:
+        before = _snapshot(workspace)
+        with (workspace / "reports" / "draft.md").open("a", encoding="utf-8") as draft:
+            draft.write("\n" + note + "\n")
+        record_changes(before, None, actor_type="human", human_id="maya-reviewer",
+                       human_label="Maya Chen", simulated=True, approval=True)
+
     parent, request = launch("parent", None)
+    simulate_review("Reviewer note: verify the revenue figure before finalizing.")
     helper = None
     if request == "delegate:finalize":
         helper, _ = launch("helper", parent)
+        simulate_review("Reviewer note: send the protected edit to governance review.")
     return {"observer_log": observer_log, "reported_log": reported_log, "parent_run": parent, "helper_run": helper}
 
 

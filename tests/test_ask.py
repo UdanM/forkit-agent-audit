@@ -59,6 +59,56 @@ def test_no_match_does_not_guess(store) -> None:
     assert answer_from_records("x" * 300, store)["citations"] == []
 
 
+def test_agent_questions_and_followups_cite_the_right_run(store) -> None:
+    profile = answer_from_records("Tell me about the Report helper", store)
+    assert "Report helper" in profile["answer"]
+    assert "act-002" in {ref["id"] for ref in profile["citations"]}
+    parent = answer_from_records("What is the parent agent of this subagent?", store, subject=profile["subject"])
+    assert "Report assistant" in parent["answer"]
+    assert {ref["id"] for ref in parent["citations"]} == {"act-001", "act-002"}
+    actions = answer_from_records("Which file did it change?", store, subject=profile["subject"])
+    assert "summary.md" in actions["answer"]
+    assert {ref["id"] for ref in actions["citations"]} == {"act-005"}
+    assert "read-only" in answer_from_records("What access did the Report helper have?", store)["answer"]
+    timing = answer_from_records("When did Report helper write summary.md?", store)
+    assert "10:01:30" in timing["answer"] and timing["citations"][0]["id"] == "act-005"
+    assert "Report helper" in answer_from_records("Who did the Report assistant delegate to?", store)["answer"]
+    same = answer_from_records("Is Report helper the same agent as Report finisher?", store)
+    assert "same agent identity" in same["answer"]
+    assert {ref["id"] for ref in same["citations"]} == {"act-002", "act-010"}
+    assert "not proof of misconduct" in answer_from_records("What needs human review?", store)["answer"]
+
+
+def test_same_label_needs_clarification_even_with_local_model(store, monkeypatch) -> None:
+    timeline = store["timeline"]
+    extra = {**next(run for run in timeline["runs"] if run["label"] == "Report helper"),
+             "run_id": "separate-run", "agent": "separate-agent", "record_id": "other-start"}
+    mixed = {**store, "timeline": {**timeline, "runs": [*timeline["runs"], extra]}}
+    def should_not_guess(*args):
+        pytest.fail("Ambiguous answers must not be delegated to the model")
+    monkeypatch.setattr(ask_mod, "ask_local_model", should_not_guess)
+    result = ask("Who is the parent of Report helper?", mixed, model="test-model")
+    assert "Which run do you mean?" in result["answer"]
+    assert "subject" not in result
+
+
+def test_human_questions_use_observer_records(store) -> None:
+    human = answer_from_records("Who was the human in the workflow?", store)
+    assert "Maya Chen" in human["answer"] and "simulated" in human["answer"]
+    assert {ref["id"] for ref in human["citations"]} == {"act-012", "act-013"}
+    changes = answer_from_records("Which files did Maya Chen change?", store)
+    assert "review-notes.md" in changes["answer"]
+    assert all("Maya Chen" in ref["text"] for ref in changes["citations"])
+    assert "review-notes.md" in answer_from_records("Which approved files did Maya Chen change?", store)["answer"]
+    assert not answer_from_records("Which unapproved files did Maya Chen change?", store)["citations"]
+    assert "do not identify a human approver" in answer_from_records("Was there human approval?", store)["answer"]
+    missing = answer_from_records("Who was the human in the workflow?", {**store, "timeline": None})
+    assert "No human" in missing["answer"] and not missing["citations"]
+    rejected = answer_from_records("Who was the human in the workflow?",
+                                   {**store, "timeline": {"checkpoint": "rewritten"}})
+    assert "failed its checkpoint" in rejected["answer"] and not rejected["citations"]
+
+
 class _Resp(io.BytesIO):
     def __enter__(self):
         return self

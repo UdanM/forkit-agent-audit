@@ -414,8 +414,22 @@ git --git-dir data/audit-archive.git show main:records.jsonl
 ```
 
 ### Ask Forkit
-The **Ask Forkit** expander answers questions like "What needs review?", "Who changed
-reports/q3/summary.md?" or "Which tools did you find?" from the local records, with a citation per claim.
+**Ask Forkit** answers from the local records and cites the evidence. In demo mode, try:
+
+1. “Tell me about the Report helper.”
+2. “Who is the parent of this subagent?”
+3. “When did it write summary.md?”
+4. “Who was the human in the workflow?” or “Which files did Maya Chen change?”
+
+You can ask about recorded agent IDs, access, deployment, actions, and findings by name or run ID.
+A follow-up uses the previous agent when you say “it” or “this subagent”. Ambiguous names require
+clarification. Open **Activity timeline** from an answer to see the cited run or action.
+The demo and delegated pilot include explicitly simulated human edits. An observer can identify
+a real human edit with `actor_type: "human"`, a human ID or label, and a null agent run ID.
+Events without actor evidence still stay UNKNOWN.
+
+Existing questions such as “What needs review?”, “Who changed reports/q3/summary.md?”, and
+“Which tools did you find?” still work.
 Set `AUTODISCOVER_ASK_MODEL` to an installed Ollama model to have the answer rephrased locally: the model
 gets short evidence lines only, over loopback, and its answer is dropped unless every citation is valid.
 
@@ -440,7 +454,7 @@ up as drift. `fixtures/` itself is never modified.
 | `cursor_mcp.json` | A second `postgres-mcp` pointing at a different database |
 | `claude_desktop_config_v2.json` | `filesystem-mcp` with `ro` removed and a `finance` mount added |
 | `runtime_events.jsonl` | `evt-0001` approved read, `evt-0002` unauthorized `fs.write_file`, `evt-0003` unapproved Cursor `pg.query`, `evt-0004` names only the shared `postgres-mcp` (ambiguous), `evt-0005` has no source (delete attempt) |
-| `activity/observer.jsonl` | Observer log: a report agent, its read-only helper writing a protected file, a Cursor run editing `.cursor/mcp.json`, a sequence gap, clock drift, two unknown actors, an access escalation, missing onboarding |
+| `activity/observer.jsonl` | Observer log: a report agent, two edits by a simulated human reviewer, a read-only helper writing a protected file, a Cursor config edit, sequence and clock discrepancies, unknown actors, and access and onboarding findings |
 | `activity/agent_reported.jsonl` | The helper's own report, which disagrees with the observer |
 | `approvals.json` | `filesystem-mcp` approved for read actions only; Claude `postgres-mcp` pending; Cursor `postgres-mcp` has no record |
 

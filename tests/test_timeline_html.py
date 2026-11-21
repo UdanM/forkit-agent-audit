@@ -17,7 +17,8 @@ def tl() -> dict:
 
 def test_feed_marks_violations_and_unknown_actors() -> None:
     out = activity_feed_html(tl())
-    assert out.count("<li") == 6
+    assert out.count("<li") == 8
+    assert "Maya Chen · Simulated human" in out and "observer recorded a simulated human edit" in out
     assert '<li class="bad">' in out and "read-only run wrote" in out and "protected file" in out
     assert "delegated by Report assistant" in out
     assert 'class="who unk">UNKNOWN' in out and ".." not in out.split("</style>")[1]

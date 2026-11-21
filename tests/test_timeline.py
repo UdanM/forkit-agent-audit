@@ -77,6 +77,15 @@ def test_unknown_actor_is_never_guessed(tl) -> None:
     assert acts["act-009"]["actor"] == UNKNOWN and acts["act-009"]["actor_reason"] == "no run reference"
 
 
+def test_human_attribution_requires_an_observer(tl) -> None:
+    acts = {a["record_id"]: a for a in tl["actions"]}
+    assert acts["act-012"]["actor"] == "Maya Chen" and acts["act-012"]["actor_type"] == "human"
+    assert acts["act-012"]["run_id"] is None and acts["act-012"]["agent"] == UNKNOWN
+    claim = rows(write("claim", None, "notes.md", actor_type="human", human_label="Someone"))
+    assert build_timeline([], claim)["actions"] == []
+    assert acts["act-009"]["actor_type"] == "unknown"
+
+
 def test_shared_file_overlap(tl) -> None:
     assert tl["shared_files"] == {"reports/q3/summary.md": ["Code assistant", "Report assistant", "Report helper"]}
 

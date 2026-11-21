@@ -29,7 +29,7 @@ stay null, because the capture point can't know them.
 | C | local | Same tool name `files-local` in Cursor writes a draft | Separate passport; MISSING_APPROVAL, POL-005; a link to the Claude passport is refused |
 | D | cloud | n8n reads and writes, then reports to the collector | Read APPROVED (`appr-agent-002`); write MISSING_APPROVAL, POL-005 |
 | E | local | `--read-only` is removed from the Claude config, then the agent writes | Drift on the same passport (POL-002); the write succeeds and becomes an incident |
-| F | local | A report agent (real process) delegates to a helper process declared read-only, which edits the protected summary. An independent observer hashes the workspace around each process (`demo/agents/pilot.py`, ported from UdanM/forkit-agent-audit) | Tab 06: delegation chain with both PIDs; POL-007 read-only write, POL-008 protected file, POL-009 no approval; the helper's own report calls it read-only, POL-015 |
+| F | local | A report agent drafts a file. Maya Chen, a simulated human reviewer, edits the draft before and after the agent's read-only helper edits the protected summary. The observer hashes the workspace around each step (`demo/agents/pilot.py`, ported from UdanM/forkit-agent-audit). | Activity timeline shows both worker PIDs, delegation, and the two human edits. POL-007, POL-008, POL-009, and POL-015 still flag the helper's activity. Ask Forkit can identify the helper's parent and the human reviewer. |
 
 Run the pilot on its own with `python -m demo.agents.pilot <new folder>`. It only sees changes to its own
 workspace around each worker; it does not enforce OS permissions.
