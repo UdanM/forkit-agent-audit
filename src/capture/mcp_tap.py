@@ -91,7 +91,7 @@ def parse(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     p.add_argument("--client", required=True)
     p.add_argument("--config", required=True, help="config file path as AutoDiscover stores it (source_path)")
     p.add_argument("--server", required=True, help="server name in that config")
-    p.add_argument("--log", default="data/agents/captured_events.jsonl")
+    p.add_argument("--log", default=os.environ.get("AUTODISCOVER_CAPTURE_LOG", "data/agents/captured_events.jsonl"))
     p.add_argument("--agent", default=None)
     p.add_argument("--read-only", action="store_true")
     ns = p.parse_args(argv[:i])
@@ -102,6 +102,8 @@ def parse(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
 
 def main(argv: list[str] | None = None) -> int:
     ns, command = parse(list(sys.argv[1:] if argv is None else argv))
+    if command[0] in ("python", "python3"):
+        command = [sys.executable, *command[1:]]     # same interpreter as the tap, on any OS
     child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     tap = Tap(ns, sys.stdout.buffer)
 

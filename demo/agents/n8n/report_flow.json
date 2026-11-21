@@ -1,0 +1,197 @@
+{
+  "id": "adReportFlow0001",
+  "name": "AutoDiscover demo: report flow",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "a1",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a2",
+      "name": "Read report",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "fileSelector": "={{ $env.AUTODISCOVER_WORKSPACE }}/reports/q3_summary.md",
+        "options": {}
+      }
+    },
+    {
+      "id": "a3",
+      "name": "Extract text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      }
+    },
+    {
+      "id": "a4",
+      "name": "Draft summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "summary",
+              "type": "string",
+              "value": "=Summary drafted by the n8n demo flow (synthetic). Source length: {{ $json.data.length }} characters."
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a5",
+      "name": "To file",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "summary",
+        "options": {}
+      }
+    },
+    {
+      "id": "a6",
+      "name": "Write summary",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $env.AUTODISCOVER_WORKSPACE }}/drafts/n8n_summary.md",
+        "options": {}
+      }
+    },
+    {
+      "id": "a7",
+      "name": "Report actions to AutoDiscover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.AUTODISCOVER_COLLECTOR_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.N8N_COLLECTOR_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(['read_file', 'write_file'].map(t => ({ tool_call: 'n8n.' + t, result: 'success', target: (t === 'read_file' ? $env.AUTODISCOVER_WORKSPACE + '/reports/' + $('Read report').item.json.fileName : $('Write summary').item.json.fileName).replace($env.AUTODISCOVER_ROOT + '/', ''), argument_keys: [t === 'read_file' ? 'fileSelector' : 'fileName'], source: { client: 'UNKNOWN', config_path: 'configs/n8n_mcp.json', server_name: 'n8n-report-flow' }, capture: { origin: 'cloud-n8n', agent: 'n8n-report-flow' } }))) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Read report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read report": {
+      "main": [
+        [
+          {
+            "node": "Extract text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract text": {
+      "main": [
+        [
+          {
+            "node": "Draft summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft summary": {
+      "main": [
+        [
+          {
+            "node": "To file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To file": {
+      "main": [
+        [
+          {
+            "node": "Write summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write summary": {
+      "main": [
+        [
+          {
+            "node": "Report actions to AutoDiscover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
