@@ -22,48 +22,48 @@ _INCIDENT_TYPES = {"OUT_OF_EXPECTED_BEHAVIOR": "Out of expected behavior"}
 
 _CSS = """
 <style>
-.lm-wrap{overflow-x:auto;font-family:Inter,"Segoe UI",system-ui,sans-serif;color:#1C1917}
+.lm-wrap{overflow-x:auto;font-family:Inter,"Segoe UI",system-ui,sans-serif;color:#EEF1FF}
 .lm{border-collapse:separate;border-spacing:0 6px;min-width:1180px;width:100%;table-layout:fixed}
-.lm th{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#57534E;
-  text-align:left;padding:0 0 4px 2px;border-bottom:1.5px solid #1C1917}
-.lm th.lm-a{border-bottom:1.5px solid #1C1917}
+.lm th{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#B1BBDA;
+  text-align:left;padding:0 0 4px 2px;border-bottom:1.5px solid #EEF1FF}
+.lm th.lm-a{border-bottom:1.5px solid #EEF1FF}
 .lm td{vertical-align:middle;padding:0;position:relative}
 .lm col.c-box{width:auto}.lm col.c-arr{width:34px}.lm col.c-gap{width:22px}
-.lm .box{border:1px solid #A8A29E;background:#fff;padding:8px 10px;font-size:13px;line-height:1.4;
+.lm .box{border:1px solid #4A5580;background:#131A30;padding:8px 10px;font-size:13px;line-height:1.4;
   height:100%;box-sizing:border-box}
 .lm td.span{height:1px}.lm td.span .box{display:flex;flex-direction:column;justify-content:center}
 .lm .t{font-weight:600}
-.lm .m{font-family:"JetBrains Mono",Consolas,monospace;font-size:12px;color:#44403C;word-break:break-all}
-.lm .s{font-size:12px;color:#57534E}
-.lm .ok{color:#1F6B3A}.lm .bad{color:#9F1239}.lm .warn{color:#9A4527}
-.lm .box.pp{border:1.5px solid #1C1917}
-.lm .box.cand{border:1.5px dashed #A8A29E;color:#57534E}
-.lm .box.red{border-color:#9F1239;background:#FDF3F3}
-.lm .box.green{border-color:#1F6B3A;background:#F2F8F3}
-.lm .box.none{border:1px dashed #D6D3CE;background:transparent;color:#6B6560;font-size:12px;text-align:center}
-.lm .box.chk{background:#FAF9F6}
+.lm .m{font-family:"JetBrains Mono",Consolas,monospace;font-size:12px;color:#D7DCF5;word-break:break-all}
+.lm .s{font-size:12px;color:#B1BBDA}
+.lm .ok{color:#7FE0BE}.lm .bad{color:#FF8FA3}.lm .warn{color:#FFC988}
+.lm .box.pp{border:1.5px solid #EEF1FF}
+.lm .box.cand{border:1.5px dashed #4A5580;color:#B1BBDA}
+.lm .box.red{border-color:#FF8FA3;background:#3A1A26}
+.lm .box.green{border-color:#7FE0BE;background:#153632}
+.lm .box.none{border:1px dashed #2D3654;background:transparent;color:#8E97B8;font-size:12px;text-align:center}
+.lm .box.chk{background:#0F1427}
 .lm .chk div+div{margin-top:3px}
 .lm .arr{position:absolute;inset:0}
-.lm .arr i{position:absolute;left:3px;right:7px;top:50%;height:0;border-top:1.5px solid #57534E}
+.lm .arr i{position:absolute;left:3px;right:7px;top:50%;height:0;border-top:1.5px solid #B1BBDA}
 .lm .arr b{position:absolute;right:2px;top:50%;margin-top:-4.5px;width:0;height:0;
-  border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:7px solid #57534E}
+  border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:7px solid #B1BBDA}
 .lm tr.grp td{padding-top:10px}
-.lc{display:grid;grid-template-columns:1fr 34px 1fr 34px 1fr 34px 1fr 34px 1fr;font-family:Inter,"Segoe UI",system-ui,sans-serif;color:#1C1917}
-.lc .box{border:1px solid #A8A29E;background:#fff;padding:9px 11px;font-size:13px;line-height:1.4}
-.lc .n{font-size:11px;color:#6B6560;font-variant-numeric:tabular-nums}
-.lc .t{font-weight:600}.lc .s{font-size:12px;color:#57534E}
-.lc .box.pp{border:1.5px solid #C25E3A}.lc .box.pp .s{color:#9A4527}
+.lc{display:grid;grid-template-columns:1fr 34px 1fr 34px 1fr 34px 1fr 34px 1fr;font-family:Inter,"Segoe UI",system-ui,sans-serif;color:#EEF1FF}
+.lc .box{border:1px solid #4A5580;background:#131A30;padding:9px 11px;font-size:13px;line-height:1.4}
+.lc .n{font-size:11px;color:#8E97B8;font-variant-numeric:tabular-nums}
+.lc .t{font-weight:600}.lc .s{font-size:12px;color:#B1BBDA}
+.lc .box.pp{border:1.5px solid #BEAFFF}.lc .box.pp .s{color:#FFC988}
 .lc .ar{position:relative}
-.lc .ar i{position:absolute;left:3px;right:7px;top:50%;border-top:1.5px solid #57534E}
+.lc .ar i{position:absolute;left:3px;right:7px;top:50%;border-top:1.5px solid #B1BBDA}
 .lc .ar b{position:absolute;right:2px;top:50%;margin-top:-4.5px;border-top:5px solid transparent;
-  border-bottom:5px solid transparent;border-left:7px solid #57534E}
+  border-bottom:5px solid transparent;border-left:7px solid #B1BBDA}
 .lc .stem{grid-column:9;height:22px;position:relative}
-.lc .stem i{position:absolute;left:50%;top:0;bottom:0;border-left:1.5px solid #57534E}
-.lc .grp{grid-column:1 / -1;border:1px solid #D6D3CE;background:#FAF9F6;padding:10px 12px 12px}
-.lc .grp-h{font-size:12px;color:#57534E;margin-bottom:8px}
+.lc .stem i{position:absolute;left:50%;top:0;bottom:0;border-left:1.5px solid #B1BBDA}
+.lc .grp{grid-column:1 / -1;border:1px solid #2D3654;background:#0F1427;padding:10px 12px 12px}
+.lc .grp-h{font-size:12px;color:#B1BBDA;margin-bottom:8px}
 .lc .recs{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
 .lc .recs .m{font-family:"JetBrains Mono",Consolas,monospace;font-size:12px;font-weight:600}
-.lc .red{color:#9F1239}.lc .warn{color:#9A4527}
+.lc .red{color:#FF8FA3}.lc .warn{color:#FFC988}
 </style>
 """
 

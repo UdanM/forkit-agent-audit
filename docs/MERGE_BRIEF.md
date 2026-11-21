@@ -27,7 +27,7 @@ app.py (Streamlit) ── reads/writes only through AutoDiscoverEngine; views in
 | `src/installed.py` | Installed AI clients (CLIs, desktop apps, editor extensions) as their own passport types. | ~200 |
 | `src/timeline.py` | Activity timeline: observer-log parser, runs, agents, delegation, 13 checks, log checkpoints. | ~430 |
 | `src/audit_archive.py` | Append-only bare Git archive of governance records, with a history verifier. | ~230 |
-| `src/ask.py` | Ask AutoDiscover: record matching with citations, optional local Ollama model. | ~170 |
+| `src/ask.py` | Ask Forkit: record matching with citations, optional local Ollama model. | ~170 |
 | `app.py` | Streamlit UI: five tabs, sidebar metrics, audit download. No business logic. | ~1,000 |
 | `src/capture/` | Live capture: `mcp_tap.py` (stdio MCP proxy, enforces `--read-only`), `collector.py` (token-checked HTTP), `events.py` (metadata-only events). | ~370 |
 | `demo/agents/` | Live-agent demo: configs, synthetic workspace, approvals, scripted LangGraph agent, n8n workflow, `run_scenarios.py`. | |

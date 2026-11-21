@@ -42,7 +42,7 @@ Start it with a double-click on **`Start AutoDiscover.cmd`** (Windows) or `./sta
 
 | Discover | Identity and review | Provenance map |
 |---|---|---|
-| ![01 Discover: tools found in two config files, secrets removed](docs/images/autodiscover/01-discover.png) | ![02 Identity: one passport per tool, UNKNOWN where the config is silent](docs/images/autodiscover/02-identity.png) | ![05 Provenance map: config file, tool, passport, event and incident on one row](docs/images/autodiscover/05-provenance-map.png) |
+| ![Tools: tools found in two config files, secrets removed](docs/images/autodiscover/01-discover.png) | ![Passports: one passport per tool, UNKNOWN where the config is silent](docs/images/autodiscover/02-identity.png) | ![05 Provenance map: config file, tool, passport, event and incident on one row](docs/images/autodiscover/05-provenance-map.png) |
 
 ### Phase 2 at a glance (for the judges)
 
@@ -64,7 +64,7 @@ Start it with a double-click on **`Start AutoDiscover.cmd`** (Windows) or `./sta
 | **Activity timeline** | Agent identity only from observer evidence, delegation chains with PIDs, shared-file overlap, self-reports checked against the observer, `LENGTH:SHA256` log checkpoints; 13 checks as rules `POL-006`…`POL-018` | 06 tab · [details](#activity-timeline) |
 | **Git audit archive** | Every link, incident, review item, drift record and activity finding in an append-only bare Git repo; rewrites and replaced histories fail verification | sidebar · [details](#append-only-git-archive) |
 | **Delegated-helper pilot** | Real worker processes; a helper declared read-only edits a protected file and its own report says otherwise | Live agents scenario F |
-| **Ask AutoDiscover** | Short questions answered from records with citations; optional local model, loopback only | expander under the header |
+| **Ask Forkit** | Short questions answered from records with citations; optional local model, loopback only | expander under the header |
 
 | File | Purpose |
 |---|---|
@@ -74,8 +74,8 @@ Start it with a double-click on **`Start AutoDiscover.cmd`** (Windows) or `./sta
 | `src/discovery_host.py` | "Discovered on" machine name, stored as a sidecar record keyed by `passport_id` |
 | `src/installed.py` | Installed AI clients: CLIs on PATH, desktop apps, editor extensions |
 | `src/timeline.py` | Activity timeline: strict observer-log parser, runs, agents, delegation, checks, checkpoints |
-| `src/audit_archive.py` | Append-only Git archive and its verifier |
-| `src/ask.py` | Ask AutoDiscover: record matching with citations, optional local model |
+| `src/audit_archive.py` | Audit records (append-only Git archive) and its verifier |
+| `src/ask.py` | Ask Forkit: record matching with citations, optional local model |
 | `src/capture/` | Live capture: `mcp_tap.py` (stdio proxy), `collector.py` (HTTP), `events.py` (metadata-only event schema) |
 | `demo/agents/` | Agent configs, synthetic workspace, approvals, the scripted agent, the n8n workflow, `pilot.py` and `run_scenarios.py` |
 | `app.py` | Streamlit demo: Discover → Match → Suggest → Review → Link → Map |
@@ -207,7 +207,7 @@ assert hashlib.sha256(json.dumps(r, sort_keys=True).encode("utf-8")).hexdigest()
 ```
 
 ### 8. Visual provenance & lifecycle flow
-The **05 Map** tab shows two diagrams, with no new dependency:
+The **Map** tab shows two diagrams, with no new dependency:
 
 - **Lifecycle:** client config → redaction → provenance hash → Forkit Core `compute_id` → stable
   `passport_id`. The side records (approvals, drift, links, incidents, policy findings) hang off the
@@ -317,16 +317,16 @@ Start from **1-Click Reset Demo State** in the sidebar. Each tab shows a *Next d
 
 | # | Click | Say |
 |---|---|---|
-| 1 | **01 Discover** → *Scan Local MCP Configs* | "Three MCP servers found. Secrets are redacted at discovery, and the disk check proves no raw secret value is stored." |
-| 2 | **02 Identity** → mint all three | "Owner and version are UNKNOWN because the config doesn't say. Both postgres-mcp tools share a name but have different provenance, so they get different IDs." |
+| 1 | **Tools** → *Scan Local MCP Configs* | "Three MCP servers found. Secrets are redacted at discovery, and the disk check proves no raw secret value is stored." |
+| 2 | **Passports** → mint all three | "Owner and version are UNKNOWN because the config doesn't say. Both postgres-mcp tools share a name but have different provenance, so they get different IDs." |
 | 3 | Sidebar → **Simulate Restart** | "All memory is wiped. The re-scan matched 3 of 3 tools to the same passport IDs, with zero duplicates." |
-| 4 | Sidebar → **Load v2 Config Update** → **03 Drift** | "Someone edited filesystem-mcp. It's the same passport, but we flag the diff. The read-only evidence is gone, so access mode is now UNKNOWN until a human reviews it." |
-| 5 | **04 Linking** → pick `evt-0002` → *Link Event* without consent | "Linking is blocked without explicit consent." |
+| 4 | Sidebar → **Load v2 Config Update** → **Changes** | "Someone edited filesystem-mcp. It's the same passport, but we flag the diff. The read-only evidence is gone, so access mode is now UNKNOWN until a human reviews it." |
+| 5 | **Event review** → pick `evt-0002` → *Link Event* without consent | "Linking is blocked without explicit consent." |
 | 6 | Tick consent → *Link Event* | "Source and timestamp are recorded. MISSING_APPROVAL comes from approvals.json, and the incident shows a read-only tool tried to write." |
 | 7 | Pick `evt-0003` → choose the filesystem-mcp passport → consent → *Link Event* | "You can't attach an event to the wrong tool." |
 | 7b | Pick `evt-0004` | "It only says postgres-mcp, and two configs have one. That's ambiguous, so the engine refuses to link it. We record it for review with the actor UNKNOWN." |
-| 8 | **05 Map** | "Each row reads left to right: config file, tool, passport, event, incident. Everything joins by passport_id, and the passport itself never changes." |
-| 8b | **06 Timeline** → *Save Log Checkpoint* → *Simulate Log Tampering* | "The helper was declared read-only and still edited a protected file. Its own report disagrees with the observer. And when someone edits the log afterwards, the checkpoint catches it: POL-006, critical." |
+| 8 | **Map** | "Each row reads left to right: config file, tool, passport, event, incident. Everything joins by passport_id, and the passport itself never changes." |
+| 8b | **Activity timeline** → *Save Log Checkpoint* → *Simulate Log Tampering* | "The helper was declared read-only and still edited a protected file. Its own report disagrees with the observer. And when someone edits the log afterwards, the checkpoint catches it: POL-006, critical." |
 | 9 | Sidebar → **Download Governance Audit Report** | "Integrity and secret scan both PASS. The report is tamper-evident and every file is checksummed." |
 
 ### Real local machine mode
@@ -374,7 +374,7 @@ work on synthetic files while AutoDiscover captures each tool call:
 The six scenarios cover an approved read, a blocked write, the same tool name in another client, the n8n
 run, a config edit that removes `--read-only` before a write, and a delegated helper (two real processes,
 watched by an independent observer) that writes although it was declared read-only; see tab 06. Linking still needs your consent tick in
-**04 Linking**. Same from the command line: `python -m demo.agents.run_scenarios --consent`.
+**Event review**. Same from the command line: `python -m demo.agents.run_scenarios --consent`.
 Details and requirements: [`demo/agents/README.md`](demo/agents/README.md).
 
 ![Live agents: captured scenarios](docs/images/autodiscover/06-live-agents.png)
@@ -401,8 +401,8 @@ Row shape: `{"id", "time", "kind": "run_started"|"file_write"|"tool_call", "run_
 `protected`, `patch`. In real-machine mode, point the tab at any observer log; `python -m demo.agents.pilot
 <folder>` writes one.
 
-### Append-only Git archive
-The sidebar's **Append-only Git archive** commits every new link, incident, review item, drift record and
+### Audit records (append-only Git archive)
+The sidebar's **Audit records (append-only Git archive)** commits every new link, incident, review item, drift record and
 activity finding to a bare Git repository next to the store (`audit-archive.git`), one commit per batch,
 with plumbing commands only (no hooks, no user config, fixed identity). Each commit may only append to
 `records.jsonl`; verification walks the history and also checks that the last head AutoDiscover wrote is still
@@ -413,8 +413,8 @@ git --git-dir data/audit-archive.git log --oneline
 git --git-dir data/audit-archive.git show main:records.jsonl
 ```
 
-### Ask AutoDiscover
-The **Ask AutoDiscover** expander answers questions like "What needs review?", "Who changed
+### Ask Forkit
+The **Ask Forkit** expander answers questions like "What needs review?", "Who changed
 reports/q3/summary.md?" or "Which tools did you find?" from the local records, with a citation per claim.
 Set `AUTODISCOVER_ASK_MODEL` to an installed Ollama model to have the answer rephrased locally: the model
 gets short evidence lines only, over loopback, and its answer is dropped unless every citation is valid.
@@ -469,9 +469,9 @@ policy-as-code, audit ZIP, Streamlit UI, CI) and ported his strongest ideas into
 | Installed AI clients as passport types | `discovery.py` | `6811e62` |
 | Ambiguity-safe linking and review queue | `Inventory.candidates`, `fixtures/events.json` | `ca726e5` |
 | Activity timeline, observer identity, log checkpoints | `timeline.py`, `docs/scaling.md` | `3922bb3` |
-| Append-only Git archive | `audit_repo.py` | `afbc7d7` |
+| Audit records (append-only Git archive) | `audit_repo.py` | `afbc7d7` |
 | Delegated-helper pilot | `agent_pilot.py` | `4a7f446` |
-| Ask AutoDiscover | `local_ask.py` | `b65f1b5` |
+| Ask Forkit | `local_ask.py` | `b65f1b5` |
 | Double-click launchers | `Start Forkit.cmd` | `ed9da68` |
 
 What we deliberately kept from AutoDiscover instead: Forkit Core `compute_id` (his IDs use absolute paths, so

@@ -94,203 +94,133 @@ st.set_page_config(page_title="AutoDiscover · Forkit Passports", page_icon="�
 st.markdown(
     """
 <style>
+/* Dark navy and lavender look, taken from UdanM/forkit-agent-audit @ 3f5b2aa (index.html) so both
+   halves of the demo look the same. One meaning per colour: mint ok, amber unknown, rose bad. */
 :root {
-  --ad-ink:#1C1917; --ad-muted:#57534E; --ad-line:#E6E1D8; --ad-soft:#F2EFE9; --ad-accent:#B0532F;
-  --ad-accent-hover:#A84D2D; --ad-canvas:#FAF9F6;
-  --ad-serif: Georgia, 'Times New Roman', serif;
-  --ad-elev: 0 1px 3px rgba(28,25,23,0.05), 0 1px 2px rgba(28,25,23,0.03);
-  --ad-sans: Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --ad-mono: 'JetBrains Mono', Consolas, 'SF Mono', Menlo, ui-monospace, monospace;
+  --ad-ink:#EEF1FF; --ad-muted:#B1BBDA; --ad-line:#2D3654; --ad-soft:#171E36; --ad-card:#131A30;
+  --ad-canvas:#090C18; --ad-accent:#BEAFFF; --ad-accent-ink:#1A1239; --ad-link:#C6B9FF;
+  --ad-sans:'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --ad-mono:'JetBrains Mono', Consolas, 'SF Mono', Menlo, ui-monospace, monospace;
 }
-/* Standalone app chrome */
-[data-testid="stDeployButton"], .stAppDeployButton, [data-testid="stMainMenu"] { display:none !important; }
-header[data-testid="stHeader"] { height: 2rem; background: transparent; }
-.block-container, [data-testid="stMainBlockContainer"] { padding: 0.9rem 2rem 2.5rem 2rem; max-width: 1600px; }
-h1, h2, h3, h4 { font-family: var(--ad-sans) !important; color: var(--ad-ink); letter-spacing:-0.015em; }
-h3 { font-weight: 650 !important; margin-top: 0.2rem !important; }
-/* Editorial contrast: serif only for the brand title and each tab's Step heading (st.subheader = h3) */
-[data-testid="stMainBlockContainer"] h3 { font-family: var(--ad-serif) !important; font-weight: 400 !important;
-                                          letter-spacing: -0.01em; }
-code, .mono { font-family: var(--ad-mono) !important; }
+[data-testid="stDeployButton"], .stAppDeployButton, [data-testid="stMainMenu"],
+[data-testid="stToolbar"] { display:none !important; }
+header[data-testid="stHeader"] { height:2rem; background:transparent; }
+.block-container, [data-testid="stMainBlockContainer"] { padding:0.9rem 2rem 2.5rem 2rem; max-width:1600px; }
+h1, h2, h3, h4 { font-family:var(--ad-sans) !important; color:var(--ad-ink); letter-spacing:-0.01em; }
+h3 { font-weight:650 !important; margin-top:0.2rem !important; }
+code, .mono { font-family:var(--ad-mono) !important; }
+::selection { background:rgba(190,175,255,0.3); }
+:focus-visible { outline:2px solid #9EF4F1 !important; outline-offset:3px; }
 
-/* Header */
-.hero { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 24px;
-        padding:0 0 12px 0; }
-.hero-title { font-family:var(--ad-serif); font-size:1.6rem; font-weight:400; color:var(--ad-ink); letter-spacing:-0.015em; line-height:1.15; }
-.hero-sub { font-family:var(--ad-sans); font-size:0.95rem; font-weight:500; color:var(--ad-muted); margin-left:12px; letter-spacing:0; }
-.pills { display:flex; flex-wrap:wrap; gap:6px; }
-.pill { display:inline-flex; align-items:center; gap:7px; padding:4px 11px; border-radius:6px;
-        font-weight:550; font-size:0.82rem; color:#44403C; background:#fff; border:1px solid var(--ad-line); box-shadow:var(--ad-elev); }
-.pill::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--pill-dot); }
+/* Hero, as in the teammate's dashboard */
+.hero { position:relative; overflow:hidden; isolation:isolate; margin:0 0 16px; border:1px solid #323967;
+  border-radius:24px; padding:34px 40px;
+  background:radial-gradient(ellipse at 82% 55%, #302761 0, transparent 57%), linear-gradient(135deg, #1B2145, #101529 65%); }
+.hero h1 { max-width:14ch; font:700 2.9rem/1.02 var(--ad-sans) !important; letter-spacing:-0.055em; margin:0 0 10px !important;
+  padding:0 !important; color:var(--ad-ink) !important; position:relative; z-index:1; }
+.hero p { color:var(--ad-muted); margin:0; font-size:1rem; position:relative; z-index:1; max-width:44rem; }
+.hero-art { display:grid; place-items:center; width:210px; aspect-ratio:1; position:absolute; z-index:-1; right:6%;
+  top:50%; transform:translateY(-50%); border:1px solid #998cfa58; border-radius:50%;
+  background:radial-gradient(circle, #a088ff30, transparent 72%); box-shadow:0 0 90px #8e78ff30; }
+.hero-art::before, .hero-art::after { content:""; position:absolute; inset:15%; border:1px solid #9d8aff80; border-radius:50%; }
+.hero-art::after { inset:32%; border-style:dashed; }
+.hero-art b { display:grid; place-items:center; width:28%; aspect-ratio:1; border-radius:24%;
+  background:linear-gradient(135deg, #b8a7ff, #7254ea); color:#160f36; font-size:2.2rem; box-shadow:0 0 55px #ae94ff8a; }
+.hero-art i { position:absolute; width:10px; aspect-ratio:1; border-radius:50%; background:#9ef4f1; box-shadow:0 0 16px #9ef4f1; }
+.hero-art i:nth-of-type(1) { left:13%; top:28%; }
+.hero-art i:nth-of-type(2) { right:11%; bottom:29%; background:#ffb8ff; box-shadow:0 0 16px #ffb8ff; }
+.hero-art i:nth-of-type(3) { right:20%; top:20%; }
+@media (max-width:900px) { .hero-art { opacity:.37; right:-16px; } }
 
-/* Tabs (Streamlit 1.67 renders react-aria tabs) */
-.stTabs [role="tablist"] { gap: 28px; border-bottom:1px solid var(--ad-line); }
-.stTabs [data-testid="stTab"] { padding: 10px 0; background: transparent; }
-.stTabs [data-testid="stTab"] p { font-size:0.98rem; font-weight:500; color:var(--ad-muted); }
-.stTabs [data-testid="stTab"]:hover p { color: var(--ad-ink); }
-.stTabs [data-testid="stTab"][aria-selected="true"] p { color: var(--ad-ink); font-weight:650; }
-.stTabs .react-aria-SelectionIndicator { background-color: var(--ad-accent) !important; height: 2px !important; }
+/* View switcher: pill row like the teammate's .views */
+.stTabs [role="tablist"] { gap:7px !important; border-bottom:0 !important; padding:6px; width:fit-content; max-width:100%;
+  border:1px solid #272F4E; border-radius:14px; background:#0F1427; }
+.stTabs [data-testid="stTab"] { padding:7px 13px !important; border-radius:10px; border:1px solid transparent; background:transparent; }
+.stTabs [data-testid="stTab"] p { font-size:0.92rem; font-weight:650; color:#E4E8FF; }
+.stTabs [data-testid="stTab"]:hover { outline:2px solid #9787F2; }
+.stTabs [data-testid="stTab"][aria-selected="true"] { background:#322956; border-color:#514278; }
+.stTabs [data-testid="stTab"][aria-selected="true"] p { color:#EFEBFF !important; }
+.stTabs .react-aria-SelectionIndicator { display:none !important; }
 
-/* Matte status pills: one meaning per colour */
-.badge { display:inline-block; padding:1px 8px; border-radius:5px; font-weight:600; font-family:var(--ad-sans);
-         font-size:0.78rem; margin:2px 4px 2px 0; letter-spacing:0.01em; line-height:1.55; vertical-align:middle;
-         border:1px solid transparent; }
-.whatsnew { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:baseline; margin:0 0 10px;
-  padding:9px 14px; border:1px solid #E7C9B8; border-left:3px solid #C25E3A; background:#FDF6F1;
-  border-radius:8px; font-size:13px; color:#44403C; }
-.whatsnew b { color:#9A4527; font-weight:600; margin-right:4px; }
-.whatsnew i { font-style:normal; font-weight:600; color:#1C1917; margin-right:4px; }
-.b-ok       { background:#ECFDF5; color:#047857; border-color:#A7F3D0; }
-.b-unknown  { background:#FFFBEB; color:#B45309; border-color:#FDE68A; }
-.b-bad      { background:#FFF1F2; color:#BE123C; border-color:#FECDD3; }
-.b-warn     { background:#FFF7ED; color:#C2410C; border-color:#FED7AA; }
-.b-slate, .b-neutral { background:#F5F5F4; color:#44403C; border-color:#D6D3D1; }
-.b-redacted { background:#EEF2FA; color:#2B4C8C; border-color:#C7D3EA; }
+/* Tags: mint by default, amber for warnings, as in the teammate's .tag */
+.badge { display:inline-block; padding:2px 9px; border-radius:999px; font-weight:600; font-family:var(--ad-sans);
+  font-size:0.76rem; margin:2px 4px 2px 0; line-height:1.5; vertical-align:middle; font-variant-numeric:tabular-nums; }
+.b-ok { color:#AFF3DC; background:#153632; }
+.b-unknown, .b-warn { color:#FFDB9D; background:#392C25; }
+.b-bad { color:#FFC2CD; background:#3A1A26; }
+.b-slate, .b-neutral { color:#C5CBED; background:#1C2340; }
+.b-redacted { color:#C9DBFF; background:#1B2445; }
 
-/* Cards */
-.card { border:1px solid var(--ad-line); border-radius:10px; padding:16px 18px; margin-bottom:12px; background:#fff;
-        box-shadow:var(--ad-elev); }
-.card h4, .card-body h4 { margin:0 0 8px 0; font-size:1.05rem; font-weight:650; color:var(--ad-ink); }
-.card.drift    { border-color:#FDBA74; }
-.card.incident { border-color:#FDA4AF; background:#FFFBFB; }
-.card.incident h4 { color:#BE123C; }
-.card.audit    { border-color:#C7D3EA; }
-.muted { color:var(--ad-muted); }
-.mono { font-size:0.84rem; color:#292524; }
-.purpose { font-size:1rem; line-height:1.55; color:var(--ad-ink); max-width:62rem; margin:-4px 0 14px 0; }
-.ov { display:grid; grid-template-columns:repeat(5, 1fr); gap:12px; margin:4px 0 14px 0; }
-.ov-tile { background:#fff; border:1px solid var(--ad-line); border-radius:8px; padding:12px 16px 11px; }
-.ov-label { font-size:0.8rem; color:#57534E; }
-.ov-value { font-size:1.75rem; font-weight:600; line-height:1.25; color:var(--ad-ink); font-variant-numeric:tabular-nums; }
-.ov-note { font-size:0.8rem; color:#57534E; }
-.ov-tile.alert { border-color:#E9B8A3; }
-.ov-tile.alert .ov-value { color:#9F1239; }
-.ov-tile.warn { border-color:#EBC9A8; }
-.ov-tile.warn .ov-value { color:#9A4527; }
-.kv { display:flex; flex-wrap:nowrap; align-items:baseline; column-gap:6px; margin:3px 0; }
-.kv > b { flex:0 0 140px; color:var(--ad-muted); font-weight:500; font-size:0.9rem; }
-.kv > :not(b) { min-width:0; }
-.kv .mono { word-break: break-all; }
-.diff-del { color:#BE123C; } .diff-add { color:#047857; }
-
-/* Tab 2: equal-height identity cards with the action on one baseline */
-[data-testid="stHorizontalBlock"]:has(.card-body) { align-items: stretch; }
-[data-testid="stHorizontalBlock"]:has(.card-body) > [data-testid="stColumn"] > div,
-[data-testid="stHorizontalBlock"]:has(.card-body) > [data-testid="stColumn"] [data-testid="stVerticalBlock"] { height:100%; }
-[class*="st-key-idcard_"] { background:#fff; border-radius:10px !important; border-color:var(--ad-line) !important;
-                           box-shadow:var(--ad-elev); }
-[class*="st-key-idcard_"] > div:has(.card-body) { flex: 1 1 auto; }
-[class*="st-key-idcard_collision_"] { border-color:#FDBA74 !important; }
-
-/* Tab 5: diagrams framed like every other card */
-[class*="st-key-graphframe_"] { background:#fff; border-radius:10px !important; border-color:var(--ad-line) !important;
-                               box-shadow:var(--ad-elev); }
-
-/* Buttons: flat, matte */
-.stButton button, .stDownloadButton button { font-weight:600; border-radius:8px; box-shadow:none; }
-.stButton button[kind="primary"], .stDownloadButton button[kind="primary"] { background:var(--ad-accent); border:1px solid var(--ad-accent); color:#fff; }
-.stButton button[kind="primary"]:hover, .stDownloadButton button[kind="primary"]:hover { background:var(--ad-accent-hover); border-color:var(--ad-accent-hover); color:#fff; }
-.stButton button[kind="secondary"], .stDownloadButton button[kind="secondary"] { background:#fff; border:1px solid #D6D1C7; color:var(--ad-ink); }
-.stButton button[kind="secondary"]:hover, .stDownloadButton button[kind="secondary"]:hover { border-color:#A8A29E; background:var(--ad-canvas); color:var(--ad-ink); }
-[data-testid="stAlert"] > div { border-radius:8px; }
-[data-testid="stExpander"] details { border-radius:8px; }
-
-/* Sidebar */
-section[data-testid="stSidebar"] { border-right:1px solid #E5E0D8; }
-[data-testid="stSidebarUserContent"] { padding-top: 0.25rem; }
-[data-testid="stSidebarHeader"] { height: 2rem; padding-top: 0.6rem; padding-bottom: 0; }
-section[data-testid="stSidebar"] hr { margin: 0.8rem 0 !important; border-color: var(--ad-line); }
-.sb-brand { display:flex; align-items:center; gap:9px; font-family:var(--ad-serif); font-size:1.3rem; font-weight:400;
-            color:var(--ad-ink); letter-spacing:-0.01em; }
-.mark { width:22px; height:22px; border-radius:6px; background:var(--ad-accent); color:#fff; font-size:0.72rem;
-        font-family:var(--ad-sans); font-weight:700; display:inline-flex; align-items:center; justify-content:center; letter-spacing:0; }
-.sb-tag { color:var(--ad-muted); font-size:0.8rem; margin-top:4px; }
-.sb-section { font-size:0.72rem; font-weight:650; letter-spacing:0.06em; text-transform:uppercase;
-              color:var(--ad-muted); margin:2px 0 8px 0; }
-.metrics { background:#fff; border:1px solid var(--ad-line); border-radius:8px; margin-bottom:10px; box-shadow:var(--ad-elev); }
-.mrow { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; font-size:0.92rem;
-        color:#44403C; }
-.mrow + .mrow { border-top:1px solid var(--ad-line); }
-.mrow b { font-size:1.15rem; font-weight:700; color:var(--ad-ink); font-variant-numeric: tabular-nums; }
-.mrow.alert b { color:#BE123C; }
-.mrow .badge { margin:0; }
-/* ── 10/10 refinements (style only; no layout rules above are changed) ── */
-.hero-title { font-size:1.85rem; }
-.hero-sub { color:#5F5954; }
-[data-testid="stAlert"] > div { border:1px solid rgba(28,25,23,0.07); box-shadow:var(--ad-elev); }
-[data-testid="stAlert"] code { background:rgba(255,255,255,0.65); }
-[data-testid="stExpander"] details { background:#fff; border-color:var(--ad-line); box-shadow:var(--ad-elev); }
-[data-testid="stExpander"] summary:hover { color:var(--ad-accent); }
-[data-baseweb="select"] > div { background:#fff !important; border-color:#D6D1C7 !important; }
-[data-baseweb="select"] > div:hover { border-color:#A8A29E !important; }
-.stButton button:disabled { background:#F2F7F3 !important; border:1px solid #CFE3D5 !important;
-                            color:#2F6B45 !important; opacity:1 !important; cursor:default; }
-.stButton button:focus-visible, .stDownloadButton button:focus-visible {
-    outline:2px solid rgba(194,94,58,0.45); outline-offset:2px; }
-[data-testid="stCaptionContainer"] p { color:#5F5954; }
-[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { color:#57534E; }
-[data-testid="stJson"] * { color:#1C1917 !important; }
-[data-testid="stJson"] span.string-value { color:#9A4527 !important; }
-[data-testid="stCaptionContainer"] strong { color:#44403C; }
-.stTabs [data-testid="stTab"]:hover { box-shadow: inset 0 -2px 0 #E6E1D8; }
-.card h4 .mono, .kv .mono { color:#3F3A36; }
-.mrow b, .badge { font-variant-numeric: tabular-nums; }
-::selection { background: rgba(194,94,58,0.18); }
-/* Sober status labels: a small colour square + dark text on a hairline, no tinted pills */
-.badge { background:#fff !important; border:1px solid var(--ad-line) !important; border-radius:4px;
-         color:var(--ad-ink) !important; font-weight:600; letter-spacing:0.02em; padding:0 7px 0 6px; }
-.badge::before { content:""; display:inline-block; width:7px; height:7px; margin:0 6px 1px 0;
-                 vertical-align:middle; background:var(--b-dot, #A8A29E); }
-.b-ok { --b-dot:#2F7A4F; } .b-unknown { --b-dot:#D97706; } .b-bad { --b-dot:#BE123C; }
-.b-warn { --b-dot:#EA580C; } .b-slate, .b-neutral { --b-dot:#A8A29E; } .b-redacted { --b-dot:#3E63A8; }
+/* Cards: the teammate's article */
+.card { border:1px solid #2F395A; border-radius:16px; padding:18px 20px; margin-bottom:12px;
+  background:linear-gradient(145deg, #161D34, #111629); }
+.card h4, .card-body h4 { margin:0 0 8px 0; font-size:1.08rem; font-weight:650; color:var(--ad-ink); overflow-wrap:anywhere; }
+.card.drift { border-color:#6B5A3A; } .card.incident { border-color:#7A3348; } .card.incident h4 { color:#FFC2CD; }
+.card.audit { border-color:#3B456A; }
 .card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px; }
 .card-head h4 { margin:0 !important; }
-.note-warn { border-left:2px solid #EA580C; padding:2px 0 2px 10px; margin:4px 0 8px 0; font-size:0.88rem;
-             color:#7C2D12; }
-.sb-brand .logo { flex:none; display:block; }
-/* ── Pitch refresh: hero, segmented tabs, next-step card (hero and feed ideas from forkit-agent-audit) ── */
-[data-testid="stToolbar"] { display:none !important; }
-.hero2 { position:relative; overflow:hidden; display:flex; align-items:center; gap:24px; margin:0 0 14px;
-  padding:22px 30px; border-radius:16px; color:#FAF9F6;
-  background: radial-gradient(ellipse at 85% 50%, rgba(194,94,58,0.38) 0, transparent 55%),
-              linear-gradient(135deg, #2A211C 0%, #1C1917 70%); box-shadow:0 10px 30px rgba(28,25,23,0.12); }
-.hero2-text { flex:1 1 auto; min-width:0; position:relative; z-index:1; }
-.hero2 .eyebrow { font-size:0.78rem; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:#E3A07F; }
-.hero2 h1 { font-family:var(--ad-serif) !important; color:#FAF9F6 !important; font-weight:400 !important;
-  font-size:1.85rem !important; line-height:1.15 !important; letter-spacing:-0.02em; margin:8px 0 10px !important; padding:0 !important; }
-.hero2 p { color:#D6CFC7; font-size:0.98rem; line-height:1.5; max-width:46rem; margin:0 0 12px; }
-.flow { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
-.flow span { display:inline-flex; align-items:center; gap:7px; padding:5px 12px 5px 6px; border-radius:999px;
-  background:rgba(250,249,246,0.08); border:1px solid rgba(250,249,246,0.16); font-size:0.88rem; font-weight:550; }
-.flow b { display:inline-grid; place-items:center; width:20px; height:20px; border-radius:50%; background:#C25E3A;
-  color:#fff; font-size:0.72rem; }
-.flow i { width:14px; height:1px; background:rgba(250,249,246,0.35); }
-.hero2-art { position:relative; flex:0 0 140px; height:140px; }
-.hero2-art .ring { position:absolute; inset:0; border:1px solid rgba(227,160,127,0.45); border-radius:50%; }
-.hero2-art .ring.r2 { inset:28px; border-style:dashed; }
-.hero2-art .core { position:absolute; inset:40px; display:grid; place-items:center; border-radius:22px;
-  background:linear-gradient(135deg,#D7764F,#9A4527); box-shadow:0 0 40px rgba(215,118,79,0.55); }
-.hero2-art .dot { position:absolute; width:9px; height:9px; border-radius:50%; background:#F3C9A8; box-shadow:0 0 12px #F3C9A8; }
-.hero2-art .d1 { left:6px; top:52px; } .hero2-art .d2 { right:10px; bottom:40px; background:#9ED9B5; box-shadow:0 0 12px #9ED9B5; }
-.hero2-art .d3 { right:34px; top:8px; }
-@media (max-width: 1100px) { .hero2-art { display:none; } }
-.whatsnew { margin:0; flex-direction:column; gap:6px; border:0; background:transparent; padding:0; }
-/* Segmented tab bar */
-.stTabs [role="tablist"] { gap:4px !important; border-bottom:0 !important; padding:5px; background:#F2EFE9;
-  border-radius:12px; width:fit-content; max-width:100%; }
-.stTabs [data-testid="stTab"] { padding:7px 14px !important; border-radius:8px; }
-.stTabs [data-testid="stTab"]:hover { box-shadow:none !important; background:rgba(255,255,255,0.6); }
-.stTabs [data-testid="stTab"][aria-selected="true"] { background:#1C1917; }
-.stTabs [data-testid="stTab"][aria-selected="true"] p { color:#FAF9F6 !important; }
-.stTabs .react-aria-SelectionIndicator { display:none !important; }
-/* Next step card */
-.nextstep { display:flex; gap:12px; align-items:baseline; margin:0 0 16px; padding:10px 14px; background:#fff;
-  border:1px solid var(--ad-line); border-left:3px solid #C25E3A; border-radius:10px; font-size:0.93rem; color:#292524;
-  box-shadow:var(--ad-elev); }
-.nextstep > span { flex:none; font-size:0.72rem; font-weight:700; letter-spacing:0.07em; text-transform:uppercase; color:#9A4527; }
-.nextstep code { font-size:0.82rem; background:#F2EFE9; padding:0 4px; border-radius:4px; }
-.ov-tile { border-radius:12px; box-shadow:var(--ad-elev); }
-.ov-value { font-size:2rem; }
+.muted { color:var(--ad-muted); }
+.mono { font-size:0.84rem; color:#D7DCF5; }
+.purpose { font-size:0.98rem; line-height:1.55; color:var(--ad-muted); max-width:62rem; margin:-4px 0 14px 0; }
+.kv { display:flex; flex-wrap:nowrap; align-items:baseline; column-gap:6px; margin:3px 0; }
+.kv > b { flex:0 0 140px; color:var(--ad-muted); font-weight:500; font-size:0.9rem; }
+.kv > :not(b) { min-width:0; } .kv .mono { word-break:break-all; }
+.diff-del { color:#FF8FA3; } .diff-add { color:#7FE0BE; }
+.note-warn { border-left:2px solid #FFC988; padding:2px 0 2px 10px; margin:4px 0 8px 0; font-size:0.88rem; color:#FFDB9D; }
+
+/* Summary row */
+.ov { display:grid; grid-template-columns:repeat(5, 1fr); gap:12px; margin:4px 0 16px 0; }
+.ov-tile { background:linear-gradient(145deg, #161D34, #111629); border:1px solid #2F395A; border-radius:16px; padding:14px 18px 12px; }
+.ov-label { font-size:0.8rem; color:var(--ad-muted); }
+.ov-value { font-size:2rem; font-weight:650; line-height:1.25; color:var(--ad-ink); font-variant-numeric:tabular-nums; }
+.ov-note { font-size:0.8rem; color:var(--ad-muted); }
+.ov-tile.alert { border-color:#7A3348; } .ov-tile.alert .ov-value { color:#FFC2CD; }
+.ov-tile.warn { border-color:#6B5A3A; } .ov-tile.warn .ov-value { color:#FFDB9D; }
+
+/* Next step note: the teammate's comparison-result strip */
+.nextstep { display:flex; gap:12px; align-items:baseline; margin:0 0 16px; padding:11px 14px; background:#221D3D;
+  border-left:3px solid #AC96FF; border-radius:5px; font-size:0.93rem; color:var(--ad-ink); }
+.nextstep > span { flex:none; font-size:0.72rem; font-weight:700; letter-spacing:0.07em; text-transform:uppercase; color:#C6B9FF; }
+.nextstep code { font-size:0.82rem; background:#171E36; padding:0 4px; border-radius:4px; }
+
+/* Framed containers (identity cards, diagrams) */
+[data-testid="stHorizontalBlock"]:has(.card-body) { align-items:stretch; }
+[data-testid="stHorizontalBlock"]:has(.card-body) > [data-testid="stColumn"] > div,
+[data-testid="stHorizontalBlock"]:has(.card-body) > [data-testid="stColumn"] [data-testid="stVerticalBlock"] { height:100%; }
+[class*="st-key-idcard_"], [class*="st-key-graphframe_"] { background:linear-gradient(145deg, #161D34, #111629);
+  border-radius:16px !important; border-color:#2F395A !important; }
+[class*="st-key-idcard_"] > div:has(.card-body) { flex:1 1 auto; }
+[class*="st-key-idcard_collision_"] { border-color:#6B5A3A !important; }
+
+/* Buttons: the teammate's flat buttons, lavender primary */
+.stButton button, .stDownloadButton button { font-weight:650; border-radius:10px; box-shadow:none;
+  background:#171E36; border:1px solid #3B456A; color:#E4E8FF; }
+.stButton button:hover, .stDownloadButton button:hover { outline:2px solid #9787F2; border-color:#3B456A; color:#E4E8FF; background:#171E36; }
+.stButton button[kind="primary"], .stDownloadButton button[kind="primary"] { background:var(--ad-accent);
+  border:1px solid var(--ad-accent); color:var(--ad-accent-ink); }
+.stButton button[kind="primary"]:hover, .stDownloadButton button[kind="primary"]:hover { background:#CEC2FF; color:var(--ad-accent-ink); }
+.stButton button:disabled { background:#153632 !important; border:1px solid #255248 !important; color:#AFF3DC !important;
+  opacity:1 !important; cursor:default; outline:0 !important; }
+[data-testid="stExpander"] details { border-radius:12px; background:var(--ad-card); border-color:var(--ad-line); }
+[data-testid="stExpander"] summary { color:var(--ad-link); }
+[data-testid="stAlert"] > div { border-radius:8px; }
+[data-testid="stCaptionContainer"] p { color:var(--ad-muted); }
+
+/* Sidebar */
+section[data-testid="stSidebar"] { border-right:1px solid #232943; }
+[data-testid="stSidebarUserContent"] { padding-top:0.25rem; }
+[data-testid="stSidebarHeader"] { height:2rem; padding-top:0.6rem; padding-bottom:0; }
+section[data-testid="stSidebar"] hr { margin:0.8rem 0 !important; border-color:var(--ad-line); }
+.sb-brand { display:flex; align-items:center; gap:10px; font-size:1.1rem; font-weight:700; color:var(--ad-ink); }
+.brand-mark { display:grid; place-items:center; width:30px; height:30px; border-radius:9px; background:#B3A3FF; color:#161033; font-size:1rem; }
+.sb-tag { color:var(--ad-muted); font-size:0.8rem; margin-top:4px; }
+.sb-section { font-size:0.72rem; font-weight:650; letter-spacing:0.06em; text-transform:uppercase; color:var(--ad-muted); margin:2px 0 8px 0; }
+.metrics { background:var(--ad-card); border:1px solid var(--ad-line); border-radius:12px; margin-bottom:10px; }
+.mrow { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; font-size:0.92rem; color:#D7DCF5; }
+.mrow + .mrow { border-top:1px solid var(--ad-line); }
+.mrow b { font-size:1.15rem; font-weight:700; color:var(--ad-ink); font-variant-numeric:tabular-nums; }
+.mrow.alert b { color:#FFC2CD; } .mrow .badge { margin:0; }
+.mode-pill { display:inline-block; color:#C5CBED; border:1px solid #333E63; border-radius:999px; padding:2px 11px; font-size:0.78rem; margin-top:6px; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -315,19 +245,6 @@ def value_badge(value: Any) -> str:
     if value == "read-only":
         return badge("read-only", "ok")
     return f'<span class="mono">{html.escape(str(value))}</span>'
-
-
-# Logo: a Bauhaus-style mark. The circle (discovery) meets the square (the passport):
-# what is found is anchored to one fixed, stable identity.
-LOGO_SVG = (
-    # The provenance chain as a mark: config file, provenance hash, then the passport (terracotta square).
-    '<svg class="logo" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">'
-    '<rect width="32" height="32" rx="7" fill="#1C1917"/>'
-    '<path d="M9.5 22.5 L15.5 16.5 L19 13" stroke="#FAF9F6" stroke-width="2.6" fill="none" stroke-linecap="round"/>'
-    '<circle cx="9.5" cy="22.5" r="3.4" fill="#FAF9F6"/>'
-    '<circle cx="15.5" cy="16.5" r="3.4" fill="#FAF9F6"/>'
-    '<rect x="17.5" y="5.5" width="9" height="9" rx="1.5" fill="#C25E3A"/></svg>'
-)
 
 
 TAB_PURPOSE = {
@@ -355,12 +272,12 @@ def sidebar_section(title: str) -> None:
 
 
 DEMO_HINTS = {
-    1: "Click **Scan**, point at the [REDACTED] card and the disk check, then open **02 Identity**.",
+    1: "Click **Scan**, point at the [REDACTED] card and the disk check, then open **Passports**.",
     2: "Point at the same-name note and the UNKNOWN labels, mint all three, then click **Simulate Restart** in the sidebar.",
-    3: "Toggle **Load v2 Config Update** in the sidebar, show the diff and why access mode is UNKNOWN, then open **04 Linking**.",
+    3: "Toggle **Load v2 Config Update** in the sidebar, show the diff and why access mode is UNKNOWN, then open **Event review**.",
     4: "Pick evt-0002 and click Link without consent (blocked), then tick consent and link (MISSING_APPROVAL + INCIDENT). "
        "Then evt-0003 on the filesystem-mcp passport (blocked). evt-0004 names only `postgres-mcp`, which two "
-       "configs share, so it is ambiguous: record it for review instead. Then open **05 Map**.",
+       "configs share, so it is ambiguous: record it for review instead. Then open **Map**.",
     5: "Walk the top diagram once, then read the evt-0002 row of the live map from left to right.",
     6: "Click **Save Log Checkpoint**, read the helper's delegated write to the protected file, then click "
        "**Simulate Log Tampering**: the rewritten log raises a critical finding.",
@@ -528,7 +445,7 @@ eng = engine()
 # ── Sidebar: demo superpowers ──────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown(f'<div class="sb-brand">{LOGO_SVG}AutoDiscover</div>'
+    st.markdown('<div class="sb-brand"><span class="brand-mark" aria-hidden="true">✦</span>Forkit AI</div>'
                 '<div class="sb-tag">Built on Forkit Core '
                 '<span class="mono">compute_id</span></div>', unsafe_allow_html=True)
     st.divider()
@@ -574,7 +491,7 @@ with st.sidebar:
                 st.session_state.active_tab = tab
             run_discovery()
             st.session_state.flash = ("success", f"Agents ran. {run['events']} tool calls captured and minted "
-                                      "passports are ready. Link the events in **04 Linking**.")
+                                      "passports are ready. Link the events in **Event review**.")
             st.rerun()
     elif real_mode():
         if st.button("Clear Local Scan Registry", width="stretch", type="primary"):
@@ -633,12 +550,12 @@ with st.sidebar:
             st.session_state.flash = (
                 "warning",
                 "v2 config loaded, but filesystem-mcp has no passport yet, so there is nothing to diff against. "
-                "For the demo: turn v2 off, mint filesystem-mcp in **02 Identity**, then turn v2 on again.",
+                "For the demo: turn v2 off, mint filesystem-mcp in **Passports**, then turn v2 on again.",
             )
         else:
             st.session_state.flash = (
                 "warning" if v2_toggle else "info",
-                "v2 config loaded: filesystem-mcp args changed on disk. See **03 Drift**."
+                "v2 config loaded: filesystem-mcp args changed on disk. See **Changes**."
                 if v2_toggle else "Reverted to the original v1 config.",
             )
         st.rerun()
@@ -689,7 +606,7 @@ with st.sidebar:
         c_md.download_button("Markdown", render_audit_markdown(audit), file_name=f"{base}.md",
                              mime="text/markdown", width="stretch")
 
-    with st.expander("Append-only Git archive"):
+    with st.expander("Audit records"):
         if not git_available():
             st.caption("Git is not installed here, so the archive is unavailable.")
         else:
@@ -716,19 +633,10 @@ with st.sidebar:
 # ── Header ─────────────────────────────────────────────────────────────────────
 
 st.markdown(
-    '<div class="hero2"><div class="hero2-text">'
-    '<div class="eyebrow">Forkit AI · Safe onboarding of AI agents and tools</div>'
-    '<h1>Every AI tool gets a passport.<br>Every action gets a trail.</h1>'
-    '<p>AutoDiscover finds the AI tools on a machine, gives each one a permanent ID, flags changes, and shows '
-    'which agent did what, without guessing and without storing a single secret.</p>'
-    '<div class="flow"><span><b>1</b>Discover</span><i></i><span><b>2</b>Passport</span><i></i>'
-    '<span><b>3</b>Govern</span><i></i><span><b>4</b>Link</span><i></i><span><b>5</b>Map</span><i></i>'
-    '<span><b>6</b>Trace</span></div></div>'
-    '<div class="hero2-art" aria-hidden="true"><div class="ring"></div><div class="ring r2"></div>'
-    '<div class="core"><svg viewBox="0 0 24 24" width="44" height="44"><rect x="5" y="3" width="14" height="18" rx="2.5" '
-    'fill="none" stroke="#FAF9F6" stroke-width="1.6"/><circle cx="12" cy="10" r="2.6" fill="none" stroke="#FAF9F6" '
-    'stroke-width="1.6"/><path d="M8.5 16.5h7" stroke="#FAF9F6" stroke-width="1.6" stroke-linecap="round"/></svg></div>'
-    '<i class="dot d1"></i><i class="dot d2"></i><i class="dot d3"></i></div></div>',
+    '<div class="hero"><div class="hero-art" aria-hidden="true"><b>✦</b><i></i><i></i><i></i></div>'
+    '<h1>Local AI inventory</h1>'
+    '<p>See what your AI tools are doing. Every tool gets a passport, every action gets a trail, '
+    'and nothing is guessed.</p></div>',
     unsafe_allow_html=True,
 )
 
@@ -759,25 +667,14 @@ def ask_store() -> dict[str, Any]:
             "review_queue": eng.review_queue(), "policy_findings": audit["policy_findings"], "timeline": tl}
 
 
-whats_new_html = (
-    '<div class="whatsnew"><b>New</b>'
-    '<span><i>06 Timeline</i> delegated runs and the log tampering demo</span>'
-    '<span><i>04 Linking</i> ambiguous events evt-0004 and evt-0005 go to a review queue</span>'
-    '<span><i>Ask AutoDiscover</i> questions answered with sources</span>'
-    '<span><i>Sidebar</i> append-only Git archive</span>'
-    '<span><i>Scan Real Local Machine</i> Claude Code, Windsurf, Codex, AI CLIs, apps and extensions</span>'
-    '<span><i>Live agents</i> scenario F, a helper that breaks its read-only promise</span></div>'
-)
-
-_c_ask, _c_new = st.columns([3, 2])
-with _c_new.expander("What's new after the team merge"):
-    st.markdown(whats_new_html, unsafe_allow_html=True)
-with _c_ask.expander("Ask AutoDiscover"):
-    q_col, b_col = st.columns([5, 1])
-    question = q_col.text_input("Question", key="ask_q", label_visibility="collapsed",
-                                placeholder="What needs review?  ·  Who changed reports/q3/summary.md?  ·  "
-                                            "Which tools did you find?")
-    if b_col.button("Ask", width="stretch") and question.strip():
+with st.container(border=True, key="askpanel"):
+    st.markdown("#### Ask Forkit")
+    st.caption("Ask about changes, tools, or findings. Try “What needs review?” or “Who changed "
+               "reports/q3/summary.md?”")
+    q_col, b_col = st.columns([6, 1])
+    question = q_col.text_input("Question about Forkit records", key="ask_q", label_visibility="collapsed",
+                                max_chars=240, placeholder="Ask about a file, run, or event")
+    if b_col.button("Ask", width="stretch", type="primary") and question.strip():
         st.session_state.ask_result = ask_question(question, ask_store())
     res = st.session_state.get("ask_result")
     if res:
@@ -858,7 +755,7 @@ if st.session_state.flash:
 proof = st.session_state.restart_proof
 if proof and proof["registry_count"] == 0:
     st.info("Restart simulated, but the registry is empty so there is nothing to recognize yet. "
-            "Scan in **01 Discover**, mint in **02 Identity**, then click **Simulate Restart** again.")
+            "Scan in **Tools**, mint in **Passports**, then click **Simulate Restart** again.")
 elif proof:
     same = proof["after"] == proof["recognized"] and (not proof["before"] or proof["before"] == proof["after"])
     keys = [(p["source_path"], p["tool_name"]) for p in eng.passports().values()]
@@ -872,25 +769,25 @@ elif proof:
     else:
         st.warning(
             f"Restart re-scan: {len(proof['recognized'])}/{len(proof['after'])} tools already have passports "
-            f"({dupes} duplicates). Mint the rest in **02 Identity** to see them recognized next time."
+            f"({dupes} duplicates). Mint the rest in **Passports** to see them recognized next time."
         )
     with st.expander("Passport IDs before vs. after restart"):
         st.json({"before_restart": proof["before"], "after_restart": proof["after"]})
 
 # Keyed, stateful tabs: clicking a button inside a tab keeps you on that tab.
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-    ["01 Discover", "02 Identity", "03 Drift", "04 Linking",
-     "05 Map", "06 Timeline"],
+    ["Tools", "Passports", "Changes", "Event review",
+     "Map", "Activity timeline"],
     key="active_tab",
     on_change="rerun",
 )
 
 candidates: list[dict[str, Any]] = st.session_state.candidates
 
-# ── 01 Discover ───────────────────────────────────────────────────────────────
+# ── Tools ───────────────────────────────────────────────────────────────
 
 with tab1:
-    st.subheader("Find MCP servers on this machine")
+    st.subheader("Discovered tools")
     tab_purpose(1)
     demo_hint(1)
     if real_mode():
@@ -993,7 +890,7 @@ with tab1:
             store = f"{store_label()}/*.json"
             st.success(f"Disk check: 0 of {len(raw_secret_values())} raw secret values appear anywhere in `{store}`.")
 
-# ── 02 Identity ──────────────────────────────────────────────────────
+# ── Passports ──────────────────────────────────────────────────────
 
 with tab2:
     st.subheader("Review each server and issue its passport")
@@ -1009,7 +906,7 @@ with tab2:
                 "                         creator_name='UNKNOWN',\n"
                 "                         artifact_hash=sha256(source_path + tool_name + command))", language=None)
     if not candidates:
-        st.info("Scan in **01 Discover** first.")
+        st.info("Scan in **Tools** first.")
     else:
         name_sources: dict[str, set[str]] = {}
         for c in candidates:
@@ -1018,7 +915,7 @@ with tab2:
         if st.session_state.v2_active and any(
             c["source_path"] == CLAUDE and c["passport_id"] not in passports for c in candidates
         ):
-            st.warning("You are on the edited **v2** config. Minting now records v2 as the baseline, so **03 Drift** will "
+            st.warning("You are on the edited **v2** config. Minting now records v2 as the baseline, so **Changes** will "
                        "have no diff to show. For the demo, turn v2 off in the sidebar first and mint on v1.")
 
         cols = st.columns(len(candidates))
@@ -1073,7 +970,7 @@ with tab2:
                 + ". Same name, different provenance, so they get different passport IDs."
             )
 
-# ── 03 Drift ─────────────────────────────────────────────────────
+# ── Changes ─────────────────────────────────────────────────────
 
 with tab3:
     st.subheader("Config changes and policy findings")
@@ -1082,18 +979,18 @@ with tab3:
     changed = [c for c in candidates if c.get("metadata_changed")]
     if real_mode():
         if not changed:
-            st.info("No config drift on confirmed passports. To see it, mint a tool in **02 Identity**, edit that tool's "
-                    "args in your MCP config, then re-scan in **01 Discover**.")
+            st.info("No config drift on confirmed passports. To see it, mint a tool in **Passports**, edit that tool's "
+                    "args in your MCP config, then re-scan in **Tools**.")
     elif agents_mode():
         if not changed:
             st.info("Scenario E removes `--read-only` from the Claude Desktop agent config during the run. Click "
                     "**Run Agent Scenarios** in the sidebar and the change shows up here, on the same passport.")
     elif not st.session_state.scanned:
-        st.info("Run discovery in **01 Discover** and mint `filesystem-mcp` in **02 Identity** first.")
+        st.info("Run discovery in **Tools** and mint `filesystem-mcp` in **Passports** first.")
     elif not st.session_state.v2_active:
         st.info("Toggle **Load v2 Config Update** in the sidebar to simulate an in-place config edit.")
     elif not changed:
-        st.info("v2 is loaded, but no confirmed passport changed. Mint `filesystem-mcp` in **02 Identity** first, "
+        st.info("v2 is loaded, but no confirmed passport changed. Mint `filesystem-mcp` in **Passports** first, "
                 "then toggle v2 off and on again.")
     for c in changed:
         stored = eng.passports()[c["passport_id"]]
@@ -1133,7 +1030,7 @@ with tab3:
                "the facts it used. Missing facts are never guessed.")
     findings = eng.policy_findings()
     if not findings:
-        st.info("No findings yet. Scan in **01 Discover** to evaluate the rules.")
+        st.info("No findings yet. Scan in **Tools** to evaluate the rules.")
     else:
         order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         counts = {sev: sum(f["severity"] == sev for f in findings) for sev in order}
@@ -1150,10 +1047,10 @@ with tab3:
                 unsafe_allow_html=True,
             )
 
-# ── 04 Linking ────────────────────────────────────────────────────
+# ── Event review ────────────────────────────────────────────────────
 
 with tab4:
-    st.subheader("Link runtime events to passports")
+    st.subheader("Event review")
     tab_purpose(4)
     demo_hint(4)
     events = load_events()
@@ -1166,7 +1063,7 @@ with tab4:
                 "agent works through a real MCP file server behind the AutoDiscover tap, and an n8n workflow "
                 "reports its actions to the collector.")
     elif not passports:
-        st.info("No passports yet. Scan in **01 Discover** and mint at least `filesystem-mcp` in **02 Identity** before linking events.")
+        st.info("No passports yet. Scan in **Tools** and mint at least `filesystem-mcp` in **Passports** before linking events.")
     else:
         scen_of: dict[str, str] = {}
         if agents_mode():
@@ -1217,7 +1114,7 @@ with tab4:
                 title = {"ambiguous": "Ambiguous source", "no_source_context": "No source context",
                          "no_match": "Passport not minted yet"}[att["status"]]
                 st.warning(f"**{title}.** {att['reason']} "
-                           + ("Mint it in **02 Identity** to link this event. "
+                           + ("Mint it in **Passports** to link this event. "
                               if att["status"] == "no_match" else "")
                            + "Linking it to a passport will be blocked by the engine.")
                 if att["status"] != "no_match":
@@ -1312,7 +1209,7 @@ with tab4:
                 "timestamp": i["timestamp"], "result": i["result"],
             } for i in eng.incidents()], width="stretch", hide_index=True)
 
-# ── 05 Map ─────────────────────────────────────────────────────────
+# ── Map ─────────────────────────────────────────────────────────
 
 with tab5:
     st.subheader("Where every record comes from")
@@ -1336,7 +1233,7 @@ with tab5:
                 for p in set(map_passports) | {c["passport_id"] for c in st.session_state.candidates}}
     live = live_map_html(store, candidates=st.session_state.candidates, focus=focus, found_on=found_on)
     if live is None:
-        st.info("Nothing to map yet. Scan in **01 Discover** (and mint in **02 Identity**) and the live map of configs, passports, "
+        st.info("Nothing to map yet. Scan in **Tools** (and mint in **Passports**) and the live map of configs, passports, "
                 "events and incidents appears here.")
     else:
         with st.container(border=True, key="graphframe_live"):
@@ -1353,7 +1250,7 @@ _SEV_KIND = {"critical": "bad", "high": "bad", "medium": "warn", "low": "slate"}
 
 
 with tab6:
-    st.subheader("Who did what, and can the log be trusted")
+    st.subheader("Activity timeline")
     tab_purpose(6)
     demo_hint(6)
     if real_mode():
