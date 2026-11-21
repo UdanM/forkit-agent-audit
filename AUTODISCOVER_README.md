@@ -185,7 +185,7 @@ download the report alone.
 |---|---|
 | `report.json` | Summary counts, confirmed passports, approval coverage, metadata diffs, consented event links, `MISSING_APPROVAL` link IDs, incidents, policy findings, integrity and secret-scan verdicts |
 | `report.md` | The same report as readable tables |
-| `store/*.json` | The exact store files the report was built from |
+| `store/*.json` | Metadata projections of the store records, with fingerprints and changed field names in place of raw config details |
 | `inputs/approvals.json`, `inputs/policies.json` | The approvals and rules that were applied |
 | `SHA256SUMS` | `sha256sum -c`-compatible checksums, with POSIX `/` paths |
 

@@ -694,7 +694,8 @@ def activity_sources() -> tuple[str, Path | None, Path | None]:
 def ask_store() -> dict[str, Any]:
     """Everything Ask AutoDiscover may cite, read-only."""
     label, obs, rep = activity_sources()
-    tl = timeline_from_files(obs, rep, rules=eng.policies(), namespace=label) if obs else None
+    checkpoint = eng.log_checkpoints().get(label, {}).get("checkpoint")
+    tl = timeline_from_files(obs, rep, rules=eng.policies(), namespace=label, checkpoint=checkpoint) if obs else None
     return {"passports": eng.passports(), "links": eng.linked_events(), "incidents": eng.incidents(),
             "review_queue": eng.review_queue(), "policy_findings": audit["policy_findings"], "timeline": tl}
 
@@ -1112,17 +1113,15 @@ with tab4:
                     all_ok = st.checkbox(f"I grant explicit consent to link all {len(unlinked)} captured events",
                                          key="consent_all_agents")
                     if st.button("Link all captured actions", width="stretch"):
-                        by_src = {(p["source_path"], p["tool_name"]): pid for pid, p in passports.items()}
                         try:
-                            done = [eng.link_event(e, by_src[(e["source"]["config_path"], e["source"]["server_name"])],
-                                                   user_consent=all_ok)
-                                    for e in unlinked
-                                    if (e["source"]["config_path"], e["source"]["server_name"]) in by_src]
+                            matches = [(event, eng.attribution(event)) for event in unlinked]
+                            done = [eng.link_event(event, match["candidates"][0], user_consent=all_ok)
+                                    for event, match in matches if match["status"] == "unique"]
                             refresh_policies()
                             st.session_state.last_link = done[-1] if done else None
                             st.session_state.last_error = None
-                        except PermissionError as exc:
-                            st.session_state.last_error = f"PermissionError: {exc}"
+                        except (PermissionError, ValueError, KeyError) as exc:
+                            st.session_state.last_error = f"{type(exc).__name__}: {exc}"
                         st.rerun()
         left, right = st.columns([1, 1])
         with left:
@@ -1145,6 +1144,7 @@ with tab4:
             else:
                 match = pids[0]
                 title = {"ambiguous": "Ambiguous source", "no_source_context": "No source context",
+                         "insufficient_source": "More source details needed",
                          "no_match": "Tool not registered yet"}[att["status"]]
                 st.warning(f"**{title}.** {att['reason']} "
                            + ("Register it in **Passports** to link this action. "
@@ -1170,7 +1170,8 @@ with tab4:
             target = st.selectbox("Tool it belongs to", pids, index=pids.index(match),
                                   format_func=labels.get, key=f"target_{ev_id}")
             consent = st.checkbox("I give consent to link this action to the tool", key=f"consent_{ev_id}")
-            if st.button("Link action to tool", type="primary", width="stretch"):
+            if st.button("Link action to tool", type="primary", width="stretch",
+                         disabled=att["status"] != "unique"):
                 try:
                     st.session_state.last_link = eng.link_event(event, target, user_consent=consent)
                     refresh_policies()
@@ -1311,8 +1312,11 @@ with tab6:
         b1, b2, b3 = st.columns(3)
         if b1.button("Save log checkpoint", width="stretch",
                      help="Remembers LENGTH:SHA256 of the log as it is now. Later reads must start with the same bytes."):
-            cp = eng.save_log_checkpoint(label, obs_log)
-            st.session_state.flash = ("success", f"Checkpoint saved: `{cp[:28]}...`" if cp else "Log is empty.")
+            try:
+                cp = eng.save_log_checkpoint(label, obs_log)
+                st.session_state.flash = ("success", f"Checkpoint saved: `{cp[:28]}...`" if cp else "Log is empty.")
+            except ValueError as exc:
+                st.session_state.flash = ("error", str(exc))
             st.rerun()
         if demo_mode():
             if b2.button("Simulate log tampering", width="stretch",

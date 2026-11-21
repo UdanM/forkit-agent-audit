@@ -25,4 +25,7 @@ def test_one_click_setup_then_link_shows_plain_labels():
     text = " ".join(m.value for m in at.markdown)
     assert not at.exception
     assert "NO APPROVAL ON FILE" in text and "Incident recorded" in text
+    at.selectbox(key="ev_select").set_value("evt-0004").run()
+    assert _button(at, "Link action to tool").disabled
+    assert any("Ambiguous source" in message.value for message in at.warning)
     _button(at, "Start the demo over").click().run()

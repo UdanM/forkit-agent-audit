@@ -64,7 +64,7 @@ def worker(workspace: Path, role: str, reported_log: Path, run_id: str) -> None:
     def report(kind: str, **fields: Any) -> None:
         with reported_log.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({"id": uuid.uuid4().hex[:16], "time": _now(), "kind": kind,
-                                 "run_id": run_id, **fields}) + "\n")
+                                 "run_id": run_id, "deployment": DEPLOYMENT, **fields}) + "\n")
 
     reports = workspace / "reports"
     if role == "parent":

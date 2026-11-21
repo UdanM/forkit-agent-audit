@@ -68,9 +68,9 @@ def test_unknown_strings_count_as_missing(eng) -> None:
     assert eng.attribution(ev)["status"] == "no_source_context"
 
 
-def test_config_only_with_one_server_is_unique(eng) -> None:
+def test_config_only_with_one_registered_server_still_needs_review(eng) -> None:
     ev = {"event_id": "y", "source": {"config_path": CONFIGS[1]}, "tool_call": "pg.query"}
-    assert eng.attribution(ev)["status"] == "unique"
+    assert eng.attribution(ev)["status"] == "insufficient_source"
     ev2 = {"event_id": "z", "source": {"config_path": CONFIGS[0]}, "tool_call": "fs.read_file"}
     assert eng.attribution(ev2)["status"] == "ambiguous"
 

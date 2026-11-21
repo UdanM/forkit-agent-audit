@@ -205,7 +205,9 @@ def test_bundle_contents_match_sha256sums_with_posix_paths(ws: Path) -> None:
         digest, name = line.split("  ", 1)
         assert "\\" not in name
         assert hashlib.sha256(files[name]).hexdigest() == digest
-    assert files["store/passports.json"] == (ws / "data" / "passports.json").read_bytes()
+    exported = json.loads(files["store/passports.json"])
+    assert set(exported) == set(eng.passports())
+    assert all("config_hash" in record and "args" not in record for record in exported.values())
 
 
 def test_export_is_read_only(ws: Path) -> None:
@@ -228,5 +230,7 @@ def test_real_mode_export_reads_only_the_local_store(ws: Path) -> None:
     assert report["summary"]["passports"] == 1
     assert report["summary"]["linked_events"] == 0 and report["summary"]["incidents"] == 0
     files = unzip(build_audit_bundle(report, local.data_dir))
-    assert files["store/passports.json"] == (ws / "data" / "local" / "passports.json").read_bytes()
+    exported = json.loads(files["store/passports.json"])
+    assert set(exported) == set(local.passports())
+    assert all("config_hash" in item and "command" not in item for item in exported.values())
     assert "store/linked_events.json" not in files
