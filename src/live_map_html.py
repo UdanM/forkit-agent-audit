@@ -40,7 +40,7 @@ _CSS = """
 .lm .box.cand{border:1.5px dashed #A8A29E;color:#57534E}
 .lm .box.red{border-color:#9F1239;background:#FDF3F3}
 .lm .box.green{border-color:#1F6B3A;background:#F2F8F3}
-.lm .box.none{border:1px dashed #D6D3CE;background:transparent;color:#A8A29E;font-size:12px;text-align:center}
+.lm .box.none{border:1px dashed #D6D3CE;background:transparent;color:#6B6560;font-size:12px;text-align:center}
 .lm .box.chk{background:#FAF9F6}
 .lm .chk div+div{margin-top:3px}
 .lm .arr{position:absolute;inset:0}
@@ -50,7 +50,7 @@ _CSS = """
 .lm tr.grp td{padding-top:10px}
 .lc{display:grid;grid-template-columns:1fr 34px 1fr 34px 1fr 34px 1fr 34px 1fr;font-family:Inter,"Segoe UI",system-ui,sans-serif;color:#1C1917}
 .lc .box{border:1px solid #A8A29E;background:#fff;padding:9px 11px;font-size:13px;line-height:1.4}
-.lc .n{font-size:11px;color:#78716C;font-variant-numeric:tabular-nums}
+.lc .n{font-size:11px;color:#6B6560;font-variant-numeric:tabular-nums}
 .lc .t{font-weight:600}.lc .s{font-size:12px;color:#57534E}
 .lc .box.pp{border:1.5px solid #C25E3A}.lc .box.pp .s{color:#9A4527}
 .lc .ar{position:relative}

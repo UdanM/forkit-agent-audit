@@ -67,7 +67,7 @@ st.markdown(
     """
 <style>
 :root {
-  --ad-ink:#1C1917; --ad-muted:#57534E; --ad-line:#E6E1D8; --ad-soft:#F2EFE9; --ad-accent:#C25E3A;
+  --ad-ink:#1C1917; --ad-muted:#57534E; --ad-line:#E6E1D8; --ad-soft:#F2EFE9; --ad-accent:#B0532F;
   --ad-accent-hover:#A84D2D; --ad-canvas:#FAF9F6;
   --ad-serif: Georgia, 'Times New Roman', serif;
   --ad-elev: 0 1px 3px rgba(28,25,23,0.05), 0 1px 2px rgba(28,25,23,0.03);
@@ -174,7 +174,7 @@ section[data-testid="stSidebar"] hr { margin: 0.8rem 0 !important; border-color:
 .mrow .badge { margin:0; }
 /* ── 10/10 refinements (style only; no layout rules above are changed) ── */
 .hero-title { font-size:1.85rem; }
-.hero-sub { color:#78716C; }
+.hero-sub { color:#5F5954; }
 [data-testid="stAlert"] > div { border:1px solid rgba(28,25,23,0.07); box-shadow:var(--ad-elev); }
 [data-testid="stAlert"] code { background:rgba(255,255,255,0.65); }
 [data-testid="stExpander"] details { background:#fff; border-color:var(--ad-line); box-shadow:var(--ad-elev); }
@@ -185,7 +185,10 @@ section[data-testid="stSidebar"] hr { margin: 0.8rem 0 !important; border-color:
                             color:#2F6B45 !important; opacity:1 !important; cursor:default; }
 .stButton button:focus-visible, .stDownloadButton button:focus-visible {
     outline:2px solid rgba(194,94,58,0.45); outline-offset:2px; }
-[data-testid="stCaptionContainer"] p { color:#78716C; }
+[data-testid="stCaptionContainer"] p { color:#5F5954; }
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { color:#57534E; }
+[data-testid="stJson"] * { color:#1C1917 !important; }
+[data-testid="stJson"] span.string-value { color:#9A4527 !important; }
 [data-testid="stCaptionContainer"] strong { color:#44403C; }
 .stTabs [data-testid="stTab"]:hover { box-shadow: inset 0 -2px 0 #E6E1D8; }
 .card h4 .mono, .kv .mono { color:#3F3A36; }
@@ -751,16 +754,18 @@ with tab3:
         reason = ""
         if stored.get("access_mode") != c["access_mode"] and c["access_mode"] == UNKNOWN:
             reason = (
-                f'<div style="margin-top:10px"><b>Why access_mode is now {badge("UNKNOWN", "unknown")}:</b> '
+                f'<div style="margin-top:10px"><b>Why access is now {badge("UNKNOWN", "unknown")}:</b> '
                 "the read-only evidence (<span class='mono'>,ro</span> on the bind mount) is gone from the config. "
                 "We will not assume <i>read-write</i> either, so it stays UNKNOWN until a human reviews it.</div>"
             )
         st.markdown(
             f'<div class="card drift">'
-            f'<h4>Metadata changed · {html.escape(c["tool_name"])} '
+            f'<h4>Settings changed: {html.escape(c["tool_name"])} '
             f'<span class="mono">({short(c["passport_id"])})</span></h4>'
+            f'<p style="margin:2px 0 8px 0">Someone edited this tool\'s settings. The tool keeps its passport, '
+            f'and the change waits for a person to review it.</p>'
             f'{badge("Same passport_id", "ok")}{badge("PENDING_REVIEW", "warn")}'
-            f'<div class="kv"><b>config_hash</b><span class="mono">{stored["config_hash"][:12]}… → '
+            f'<div class="kv"><b>Fingerprint</b><span class="mono">{stored["config_hash"][:12]}… → '
             f'{c["config_hash"][:12]}…</span></div>'
             f'<div style="margin-top:8px">{"".join(lines)}</div>{reason}'
             f'<div class="muted" style="margin-top:10px">The confirmed passport is unchanged. Drift is recorded in '
@@ -772,9 +777,9 @@ with tab3:
         with st.expander(f"metadata_changes.json ({len(log)})"):
             st.json(log)
 
-    st.markdown("#### Policy-as-code findings")
-    st.caption("Declarative rules from `fixtures/policies.json`. Each finding lists the exact facts it used; "
-               "missing facts are never guessed.")
+    st.markdown("#### Rule checks")
+    st.caption("Company rules are written down in `fixtures/policies.json`, not hidden in code. Each finding shows "
+               "the facts it used. Missing facts are never guessed.")
     findings = eng.policy_findings()
     if not findings:
         st.info("No findings yet. Scan in **01 Discover** to evaluate the rules.")
@@ -789,7 +794,7 @@ with tab3:
                 f'<div class="card"><h4>{rule_badges([f])} {html.escape(f["title"])}</h4>'
                 f'<div class="kv"><b>Tool</b><span class="mono">{html.escape(f["tool_name"])} '
                 f'({short(f["passport_id"])}) · {html.escape(f["subject_type"])}</span></div>'
-                f'<div class="kv"><b>Evidence</b><span class="mono">{html.escape(ev)}</span></div>'
+                f'<div class="kv"><b>Facts used</b><span class="mono">{html.escape(ev)}</span></div>'
                 f'<div class="muted" style="margin-top:4px">{html.escape(f["explanation"])}</div></div>',
                 unsafe_allow_html=True,
             )
@@ -863,9 +868,11 @@ with tab4:
                 f'<div class="kv"><b>Timestamp</b><span class="mono">{html.escape(link["timestamp"])}</span></div>'
                 f'<div class="kv"><b>Passport</b><span class="mono">{short(link["passport_id"])}</span></div>'
                 f'<div class="kv"><b>Approval</b>{appr} {value_badge(link["approval_id"])} '
-                f'<span class="muted">(verified against fixtures/approvals.json)</span></div>'
-                f'<div class="kv"><b>Runtime consent</b>{value_badge(link["runtime_consent_id"])}</div>'
-                f'<div class="kv"><b>Link consent</b>{badge("GRANTED", "ok")}</div>'
+                f'<span class="muted">{"Approved in" if link["approval_status"] == APPROVED else "No approval on file in"} '
+                f'fixtures/approvals.json</span></div>'
+                f'<div class="kv"><b>Runtime consent</b>{value_badge(link["runtime_consent_id"])}'
+                f'{" <span class=muted>The event log does not say whether the user agreed.</span>" if link["runtime_consent_id"] == UNKNOWN else ""}</div>'
+                f'<div class="kv"><b>Link consent</b>{badge("GRANTED", "ok")} <span class="muted">You ticked the consent box.</span></div>'
                 f'<div class="kv"><b>Policy</b>'
                 f'{"".join(badge(r, "bad") for r in link.get("policy_flags", [])) or badge("no rule violated", "ok")}'
                 f'</div></div>',
@@ -877,6 +884,8 @@ with tab4:
                     st.markdown(
                         f'<div class="card incident"><h4>'
                         f'Incident recorded: out of expected behavior</h4>'
+                        f'<p style="margin:2px 0 8px 0">This tool was confirmed as read-only, but it tried to change something '
+                        f'({html.escape(inc["tool_call"])}). The result was {html.escape(str(inc["result"]))}, and the attempt is on record.</p>'
                         f'<div class="kv"><b>Incident</b><span class="mono">{html.escape(inc["incident_id"])}</span></div>'
                         f'<div class="kv"><b>Tool</b><span class="mono">{html.escape(inc["tool_name"])} '
                         f'({short(inc["passport_id"])})</span></div>'
