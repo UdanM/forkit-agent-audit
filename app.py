@@ -189,18 +189,18 @@ section[data-testid="stSidebar"] hr { margin: 0.8rem 0 !important; border-color:
 .card h4 .mono, .kv .mono { color:#3F3A36; }
 .mrow b, .badge { font-variant-numeric: tabular-nums; }
 ::selection { background: rgba(194,94,58,0.18); }
-/* Logo: a small glossy Frutiger Aero bubble (sky to leaf gradient, specular highlight) */
-.mark { position:relative; width:28px; height:28px; border-radius:9px; overflow:hidden; font-size:0.74rem;
-        background: radial-gradient(120% 90% at 30% 110%, rgba(140,230,120,0.95) 0%, rgba(140,230,120,0) 55%),
-                    linear-gradient(165deg, #9fe3ff 0%, #39a9e6 45%, #1d7fc4 70%, #2fae63 100%);
-        border:1px solid rgba(255,255,255,0.75);
-        box-shadow: inset 0 -3px 6px rgba(0,50,90,0.28), inset 0 1px 1px rgba(255,255,255,0.9),
-                    0 2px 6px rgba(20,90,140,0.35);
-        text-shadow: 0 1px 1px rgba(0,40,80,0.45); }
-.mark::before { content:""; position:absolute; left:2px; right:2px; top:1px; height:52%;
-                border-radius:8px 8px 14px 14px / 8px 8px 9px 9px;
-                background: linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.18) 100%); }
-.mark span { position:relative; }
+/* Sober status labels: a small colour square + dark text on a hairline, no tinted pills */
+.badge { background:#fff !important; border:1px solid var(--ad-line) !important; border-radius:4px;
+         color:var(--ad-ink) !important; font-weight:600; letter-spacing:0.02em; padding:0 7px 0 6px; }
+.badge::before { content:""; display:inline-block; width:7px; height:7px; margin:0 6px 1px 0;
+                 vertical-align:middle; background:var(--b-dot, #A8A29E); }
+.b-ok { --b-dot:#2F7A4F; } .b-unknown { --b-dot:#D97706; } .b-bad { --b-dot:#BE123C; }
+.b-warn { --b-dot:#EA580C; } .b-slate, .b-neutral { --b-dot:#A8A29E; } .b-redacted { --b-dot:#3E63A8; }
+.card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px; }
+.card-head h4 { margin:0 !important; }
+.note-warn { border-left:2px solid #EA580C; padding:2px 0 2px 10px; margin:4px 0 8px 0; font-size:0.88rem;
+             color:#7C2D12; }
+.sb-brand .logo { flex:none; display:block; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -225,6 +225,17 @@ def value_badge(value: Any) -> str:
     if value == "read-only":
         return badge("read-only", "ok")
     return f'<span class="mono">{html.escape(str(value))}</span>'
+
+
+# Logo: a Bauhaus-style mark. The circle (discovery) meets the square (the passport):
+# what is found is anchored to one fixed, stable identity.
+LOGO_SVG = (
+    '<svg class="logo" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">'
+    '<rect width="32" height="32" rx="7" fill="#1C1917"/>'
+    '<rect x="14" y="7" width="11" height="11" fill="#FAF9F6"/>'
+    '<circle cx="13" cy="19" r="7" fill="#C25E3A"/>'
+    '<path d="M14 18 L14 12.07 A7 7 0 0 1 19.93 18 Z" fill="#E9B8A3"/></svg>'
+)
 
 
 def sidebar_section(title: str) -> None:
@@ -345,7 +356,7 @@ eng = engine()
 # ── Sidebar: demo superpowers ──────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown('<div class="sb-brand"><span class="mark"><span>AD</span></span>AutoDiscover</div>'
+    st.markdown(f'<div class="sb-brand">{LOGO_SVG}AutoDiscover</div>'
                 '<div class="sb-tag">Built on Forkit Core '
                 '<span class="mono">compute_id</span></div>', unsafe_allow_html=True)
     st.divider()
@@ -639,14 +650,16 @@ with tab2:
                 minted = c["passport_id"] in passports
                 status = badge("CONFIRMED", "ok") if minted else badge("CANDIDATE", "neutral")
                 warn = (
-                    f'<div style="margin:6px 0">{badge("SAME NAME · DO NOT MERGE: different provenance", "warn")}</div>'
+                    '<div class="note-warn">Same name as another tool, different provenance. '
+                    'Kept as a separate passport.</div>'
                     if collision else ""
                 )
                 changed = badge("METADATA CHANGED", "bad") if c.get("metadata_changed") else ""
                 st.markdown(
                     f'<div class="card-body">'
-                    f'<h4>{html.escape(c["tool_name"])}</h4>{status}{changed}{warn}'
-                    f'<div style="margin:4px 0">{rule_badges(c.get("policy_findings", []))}</div>'
+                    f'<div class="card-head"><h4>{html.escape(c["tool_name"])}</h4><span>{changed}{status}</span></div>'
+                    f'{warn}'
+                    f'<div class="kv"><b>policy</b><span>{rule_badges(c.get("policy_findings", [])) or "none"}</span></div>'
                     f'<div class="kv"><b>client</b>{value_badge(c["client"])}</div>'
                     f'<div class="kv"><b>source_path</b>{value_badge(c["source_path"])}</div>'
                     f'<div class="kv"><b>command</b>{value_badge(c["command"])}</div>'

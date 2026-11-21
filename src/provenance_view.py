@@ -106,9 +106,11 @@ def _card(step: str, title: str, sub: str, strip: str | None = None, border: str
     rows.append(f'<TR><TD ALIGN="LEFT"><B>{title}</B></TD></TR>')
     rows.append(f'<TR><TD ALIGN="LEFT"><FONT COLOR="{sub_color or c["muted"]}">{sub}</FONT></TD></TR>')
     body = (f'<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="1">{"".join(rows)}</TABLE>')
-    strip_cell = f'<TD BGCOLOR="{strip}" WIDTH="3"></TD>' if strip else ""
+    if strip:   # an inset status bar inside the card's padding, so it never pokes past the rounded corners
+        body = (f'<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR>'
+                f'<TD BGCOLOR="{strip}" WIDTH="3"></TD><TD WIDTH="8"></TD><TD ALIGN="LEFT">{body}</TD></TR></TABLE>')
     return (f'<<TABLE BORDER="{width}" COLOR="{border or c["line"]}" BGCOLOR="white" STYLE="rounded" '
-            f'CELLBORDER="0" CELLSPACING="0" CELLPADDING="6"><TR>{strip_cell}<TD ALIGN="LEFT">{body}</TD></TR>'
+            f'CELLBORDER="0" CELLSPACING="0" CELLPADDING="6"><TR><TD ALIGN="LEFT">{body}</TD></TR>'
             f'</TABLE>>')
 
 
@@ -184,7 +186,9 @@ def live_map_dot(
 
     collapse = len(tools) > max_tools
     c = _C
-    out = _header("provenance_map")
+    out = _header("provenance_map", nodesep=0.35, ranksep=0.7)
+    # Quiet cards: white fills with a coloured hairline; only events keep a tint (red/green status).
+    out += ['  node [margin="0.16,0.08", penwidth=1.2];', f'  edge [color="{c["line"]}", penwidth=1.1];']
     by_source: dict[str, list[str]] = {}
     for pid, t in sorted(tools.items(), key=lambda kv: (str(kv[1].get("source_path")), str(kv[1].get("tool_name")))):
         by_source.setdefault(str(t.get("source_path", UNKNOWN)), []).append(pid)
@@ -196,16 +200,16 @@ def live_map_dot(
     for ci, (source, pids) in enumerate(by_source.items()):
         client = tools[pids[0]].get("client", UNKNOWN)
         out.append(f"  subgraph cluster_{ci} {{")
-        out.append(f'    label="{_lbl(f"{client} · {source}")}"; style="rounded"; color="{c["line"]}"; '
-                   f'fontcolor="{c["ink"]}"; fontsize=11; penwidth=1.5;')
+        out.append(f'    label="{_lbl(f"{client} · {source}")}"; labeljust=l; style="rounded,filled"; '
+                   f'color="{c["hair"]}"; fillcolor="#fbfaf7"; fontcolor="{c["muted"]}"; fontsize=11; penwidth=1;')
         for pid in pids:
             t, nid = tools[pid], node_ids[pid]
             dup = names[str(t.get("tool_name"))] > 1
             access = t.get("access_mode", UNKNOWN)
             tool_label = _lbl(t.get("tool_name"), f"cmd: {t.get('command', UNKNOWN)} · access: {access}",
-                              "⚠ same name, different provenance" if dup else "")
-            fill = c["orange_bg"] if dup else "white"
-            out.append(f'    {nid}_tool [label="{tool_label}", fillcolor="{fill}"];')
+                              "same name, different provenance" if dup else "")
+            edge = f', color="#ea580c", fontcolor="{c["orange"]}"' if dup else ""
+            out.append(f'    {nid}_tool [label="{tool_label}", fillcolor="white"{edge}];')
         out.append("  }")
 
     for pid in sorted(tools):
@@ -216,10 +220,10 @@ def live_map_dot(
             except (KeyError, TypeError):
                 intact = False
             verdict = "integrity PASS" if intact else "integrity FAIL"
-            color = (c["green_bg"], c["green"]) if intact else (c["red_bg"], c["red"])
+            color = c["accent"] if intact else c["red"]
             out.append(f'  {nid} [label="{_lbl("🔒 passport " + pid[:12] + "…", verdict)}", '
-                       f'fillcolor="{color[0]}", fontcolor="{color[1]}", color="{color[1]}", penwidth=2];')
-            out.append(f'  {nid}_tool -> {nid} [label="compute_id", penwidth=1.6];')
+                       f'fillcolor="white", fontcolor="{c["ink"] if intact else c["red"]}", color="{color}", penwidth=2];')
+            out.append(f'  {nid}_tool -> {nid} [label="compute_id", color="{c["accent"]}", penwidth=1.4];')
         else:
             out.append(f'  {nid} [label="{_lbl("candidate " + pid[:12] + "…", "not minted yet")}", '
                        f'style="rounded,dashed", fillcolor="white", fontcolor="{c["muted"]}"];')
@@ -229,8 +233,8 @@ def live_map_dot(
         drift = [x for x in s["changes"] if x.get("passport_id") == pid]
         if drift:
             out.append(f'  {nid}_chg [label="{_lbl(f"config drift × {len(drift)}", "PENDING_REVIEW")}", '
-                       f'fillcolor="{c["orange_bg"]}", fontcolor="{c["orange"]}", shape=note];')
-            out.append(f'  {nid} -> {nid}_chg [style=dashed, label="passport_id"];')
+                       f'fillcolor="white", color="#ea580c", fontcolor="{c["orange"]}"];')
+            out.append(f'  {nid} -> {nid}_chg [label="passport_id"];')
 
         # Policy findings summary
         found = [f for f in s["findings"] if f.get("passport_id") == pid]
@@ -239,10 +243,10 @@ def live_map_dot(
                            key=lambda r: (_SEV_ORDER.index(r.split()[-1].lower()) if r.split()[-1].lower()
                                           in _SEV_ORDER else 9, r))
             sev_red = any(f.get("severity") in ("critical", "high") for f in found)
-            fill, fg = (c["red_bg"], c["red"]) if sev_red else (c["amber_bg"], c["amber"])
-            out.append(f'  {nid}_pol [label="{_lbl("policy", *rules)}", fillcolor="{fill}", fontcolor="{fg}", '
-                       f'shape=note];')
-            out.append(f'  {nid} -> {nid}_pol [style=dashed, label="passport_id"];')
+            line, fg = ("#be123c", c["red"]) if sev_red else ("#d97706", c["amber"])
+            out.append(f'  {nid}_pol [label="{_lbl("policy", *rules)}", fillcolor="white", color="{line}", '
+                       f'fontcolor="{fg}"];')
+            out.append(f'  {nid} -> {nid}_pol [label="passport_id"];')
 
         # Events and incidents
         links = [x for x in s["links"] if x.get("passport_id") == pid]
@@ -250,21 +254,21 @@ def live_map_dot(
             miss = sum(1 for x in links if x.get("approval_status") == MISSING_APPROVAL)
             out.append(f'  {nid}_ev [label="{_lbl(f"{len(links)} linked event(s)", f"{miss} MISSING_APPROVAL")}", '
                        f'fillcolor="{c["amber_bg"] if miss else c["green_bg"]}"];')
-            out.append(f'  {nid} -> {nid}_ev [style=dashed, label="consented"];')
+            out.append(f'  {nid} -> {nid}_ev [label="consented"];')
             continue
         for li, link in enumerate(links):
             eid = f"{nid}_e{li}"
             missing = link.get("approval_status") == MISSING_APPROVAL
             label = _lbl(link.get("event_id", UNKNOWN), link.get("tool_call", UNKNOWN), link.get("timestamp", UNKNOWN),
                          MISSING_APPROVAL if missing else "APPROVED")
-            fill, fg = (c["red_bg"], c["red"]) if missing else (c["green_bg"], c["green"])
-            out.append(f'  {eid} [label="{label}", fillcolor="{fill}", fontcolor="{fg}"];')
-            out.append(f'  {nid} -> {eid} [style=dashed, label="consented link"];')
+            fill, fg, line = ((c["red_bg"], c["red"], "#be123c") if missing
+                              else (c["green_bg"], c["green"], "#2f7a4f"))
+            out.append(f'  {eid} [label="{label}", fillcolor="{fill}", fontcolor="{fg}", color="{line}"];')
+            out.append(f'  {nid} -> {eid} [label="consented link"];')
             inc = next((i for i in s["incidents"] if i.get("incident_id") == link.get("incident_id")), None)
             if inc:
                 out.append(f'  {eid}_inc [label="{_lbl("🚨 INCIDENT", inc.get("type", UNKNOWN), inc.get("incident_id"))}", '
-                           f'shape=box, peripheries=2, fillcolor="{c["red_bg"]}", fontcolor="{c["red"]}", '
-                           f'color="{c["red"]}", penwidth=2];')
+                           f'shape=box, fillcolor="white", fontcolor="{c["red"]}", color="#be123c", penwidth=2.2];')
                 out.append(f'  {eid} -> {eid}_inc [color="{c["red"]}", penwidth=2];')
     out.append("}")
     return "\n".join(out)
