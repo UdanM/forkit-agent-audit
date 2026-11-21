@@ -59,6 +59,7 @@ __all__ = [
     "INCIDENT",
     "discover_tools",
     "derive_passport_id",
+    "passport_id_of",
     "known_config_locations",
     "scan_local_machine",
     "workspace_config_locations",
@@ -75,6 +76,12 @@ __all__ = [
 UNKNOWN = "UNKNOWN"
 REDACTED = "[REDACTED]"
 PASSPORT_TYPE = "mcp_server"
+# Installed AI clients (merge M2) get their own types so a CLI named "claude"
+# can never collide with an MCP server named "claude".
+CLI_TOOL = "cli_tool"
+DESKTOP_APP = "desktop_app"
+EDITOR_EXTENSION = "editor_extension"
+PASSPORT_TYPES = (PASSPORT_TYPE, CLI_TOOL, DESKTOP_APP, EDITOR_EXTENSION)
 APPROVED = "APPROVED"
 MISSING_APPROVAL = "MISSING_APPROVAL"
 INCIDENT = "INCIDENT"
@@ -182,10 +189,18 @@ def _provenance_hash(source_path: str, tool_name: str, command: str) -> str:
     return HashEngine.hash_dict({"source_path": source_path, "tool_name": tool_name, "command": command})
 
 
-def derive_passport_id(source_path: str, tool_name: str, command: str) -> str:
-    """Deterministic passport ID from provenance. Same inputs → same ID, always."""
+def derive_passport_id(
+    source_path: str, tool_name: str, command: str, passport_type: str = PASSPORT_TYPE
+) -> str:
+    """Deterministic passport ID from provenance. Same inputs → same ID, always.
+
+    ``passport_type`` is ``mcp_server`` for MCP servers (the default, so every
+    existing ID is unchanged) or one of the installed-client types.
+    """
+    if passport_type not in PASSPORT_TYPES:
+        raise ValueError(f"unknown passport_type {passport_type!r}")
     return compute_id(
-        passport_type=PASSPORT_TYPE,
+        passport_type=passport_type,
         name=tool_name,
         version=UNKNOWN,
         creator_name=UNKNOWN,
@@ -220,6 +235,14 @@ def _enabled(spec: dict[str, Any]) -> bool | str:
     if isinstance(spec.get("disabled"), bool):
         return not spec["disabled"]
     return UNKNOWN
+
+
+def passport_id_of(record: dict[str, Any]) -> str:
+    """Re-derive a record's passport ID from its own provenance fields."""
+    return derive_passport_id(
+        record["source_path"], record["tool_name"], record["command"],
+        record.get("passport_type", PASSPORT_TYPE),
+    )
 
 
 def _candidates_from_config(
@@ -531,7 +554,7 @@ def scan_local_machine(
 
 def _diff(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
     lines: list[str] = []
-    for key in ("command", "url", "access_mode", "transport", "enabled"):
+    for key in ("command", "url", "version", "access_mode", "transport", "enabled"):
         if key in ("transport", "enabled") and (key not in old or key not in new):
             continue  # records minted before these fields existed
         if old.get(key) != new.get(key):
@@ -1061,9 +1084,21 @@ class AutoDiscoverEngine:
         home: str | Path | None = None,
         env: dict[str, str] | None = None,
         workspaces: list[str | Path] | None = None,
+        include_clients: bool = False,
+        which: Any = None,
     ) -> dict[str, Any]:
-        """Real-machine scan, annotated against this engine's own registry."""
+        """Real-machine scan, annotated against this engine's own registry.
+
+        With ``include_clients`` the installed AI clients (CLIs on PATH, desktop
+        apps, editor extensions) are appended as candidates too.
+        """
         summary = scan_local_machine(platform, home, env, workspaces)
+        if include_clients:
+            # Local import: installed.py imports engine.
+            from .installed import scan_installed_clients
+            installed = scan_installed_clients(platform, home, env, which)
+            summary["installed_counts"] = installed["counts"]
+            summary["candidates"] += installed["candidates"]
         summary["candidates"] = self._annotate(summary["candidates"])
         return summary
 
@@ -1154,8 +1189,8 @@ class AutoDiscoverEngine:
         mismatches = []
         for key, p in sorted(passports.items()):
             try:
-                derived = derive_passport_id(p["source_path"], p["tool_name"], p["command"])
-            except (KeyError, TypeError):
+                derived = passport_id_of(p)
+            except (KeyError, TypeError, ValueError):
                 mismatches.append({"passport_id": key, "reason": "missing_provenance_fields"})
                 continue
             if derived != key or p.get("passport_id") != key:
@@ -1236,7 +1271,7 @@ class AutoDiscoverEngine:
         Re-derives the ID from provenance rather than trusting the candidate,
         and never overwrites an existing confirmed passport.
         """
-        pid = derive_passport_id(candidate["source_path"], candidate["tool_name"], candidate["command"])
+        pid = passport_id_of(candidate)
         if pid != candidate.get("passport_id"):
             raise ValueError("candidate passport_id does not match its provenance")
         stored = self.passports()

@@ -45,6 +45,9 @@ from src.engine import (
 )
 from src.live_map_html import lifecycle_html, live_map_html
 
+KIND_LABELS = {"mcp_server": "MCP server", "cli_tool": "CLI", "desktop_app": "Desktop app",
+               "editor_extension": "Editor extension"}
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 
 ROOT = Path(__file__).resolve().parent
@@ -380,7 +383,8 @@ def engine() -> AutoDiscoverEngine:
 def run_discovery() -> None:
     if real_mode():
         # read-only; never raises for a bad file
-        summary = engine().scan_local_machine(workspaces=workspace_dirs())
+        summary = engine().scan_local_machine(workspaces=workspace_dirs(),
+                                              include_clients=st.session_state.get("include_clients", True))
         # Sidecar only: the machine name never enters passport_id inputs, and owner stays UNKNOWN.
         record_discovery(engine().data_dir, [c["passport_id"] for c in summary["candidates"]], machine_name())
         st.session_state.scan_summary = summary
@@ -735,6 +739,10 @@ with tab1:
                      placeholder="~/code/my-project",
                      help="Looks for .vscode/mcp.json, .cursor/mcp.json, .mcp.json and .codex/config.toml. "
                           "Only the folder name is stored, never the full path.")
+        st.checkbox("Also find installed AI clients (CLIs on PATH, desktop apps, editor extensions)",
+                    value=True, key="include_clients",
+                    help="Each gets its own passport type, so a CLI named claude never merges with an MCP "
+                         "server named claude. Nothing is launched.")
         scan_label = "Scan Real Local Machine"
     elif agents_mode():
         st.caption("Scans the configs the agents ran with: "
@@ -751,8 +759,11 @@ with tab1:
 
     summary = st.session_state.scan_summary
     if real_mode() and st.session_state.scanned and summary:
+        counts = summary.get("installed_counts")
+        extra = (f" · {counts['cli_tool']} CLI(s), {counts['desktop_app']} app(s), "
+                 f"{counts['editor_extension']} extension(s)") if counts else ""
         st.markdown(f"**Locations checked** · platform `{summary['platform']}` · "
-                    f"{summary['configs_found']} config file(s) found")
+                    f"{summary['configs_found']} config file(s) found{extra}")
         st.dataframe([{
             "client": r["client"], "location": r["location"], "status": r["status"],
             "servers": r["servers"], "note": r["error"] or "",
@@ -768,6 +779,7 @@ with tab1:
         col = st.column_config.TextColumn
         st.dataframe([{
             "tool_name": c["tool_name"],
+            "kind": KIND_LABELS.get(c.get("passport_type", "mcp_server"), UNKNOWN),
             "client": c["client"],
             "source_path": c["source_path"],
             "command": c["command"],
@@ -778,7 +790,7 @@ with tab1:
             "transport": c.get("transport", UNKNOWN),
             "enabled": {True: "yes", False: "no"}.get(c.get("enabled"), UNKNOWN),
         } for c in candidates], width="stretch", hide_index=True, column_config={
-            "tool_name": col("Tool"), "client": col("Client"), "source_path": col("Config file", width="large"),
+            "tool_name": col("Tool"), "kind": col("Kind"), "client": col("Client"), "source_path": col("Config file or location", width="large"),
             "command": col("Command"), "owner": col("Owner"),
             "discovered_on": col("Discovered on",
                                  help="Machine the scan ran on. Context only: not the owner, never part of the passport ID."),
@@ -829,7 +841,9 @@ with tab2:
         st.markdown("The ID depends only on **where** a tool is configured: the config file, the tool's name and its "
                     "command. The same tool in the same file always gets the same ID, on any machine. Arguments and "
                     "environment are tracked separately, so editing them flags a change instead of creating a new tool.")
-        st.code("passport_id = compute_id(passport_type='mcp_server', name, version='UNKNOWN',\n"
+        st.code("passport_id = compute_id(passport_type='mcp_server' | 'cli_tool' | 'desktop_app'\n"
+                "                                       | 'editor_extension',\n"
+                "                         name, version='UNKNOWN',\n"
                 "                         creator_name='UNKNOWN',\n"
                 "                         artifact_hash=sha256(source_path + tool_name + command))", language=None)
     if not candidates:

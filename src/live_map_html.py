@@ -11,7 +11,7 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from .engine import MISSING_APPROVAL, UNKNOWN, derive_passport_id
+from .engine import MISSING_APPROVAL, UNKNOWN, passport_id_of
 from .provenance_view import load_store
 
 __all__ = ["lifecycle_html", "live_map_html"]
@@ -175,8 +175,8 @@ def _passport_box(pid: str, t: dict[str, Any]) -> str:
         return (f'<div class="box cand"><div class="t">Not issued yet</div>'
                 f'<div class="m">{_e(pid[:12])}</div><div class="s">Issue it in 02 Identity &amp; Review</div></div>')
     try:
-        intact = derive_passport_id(t["source_path"], t["tool_name"], t["command"]) == pid
-    except (KeyError, TypeError):
+        intact = passport_id_of(t) == pid
+    except (KeyError, TypeError, ValueError):
         intact = False
     check = ('<div class="s ok">Integrity check passed</div>' if intact
              else '<div class="s bad">Integrity check failed</div>')

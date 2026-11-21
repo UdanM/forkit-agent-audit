@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .engine import MISSING_APPROVAL, UNKNOWN, derive_passport_id
+from .engine import MISSING_APPROVAL, UNKNOWN, passport_id_of
 
 __all__ = ["dot_escape", "load_store", "lifecycle_dot", "live_map_dot"]
 
@@ -222,8 +222,8 @@ def live_map_dot(
         t, nid = tools[pid], node_ids[pid]
         if t["_minted"]:
             try:
-                intact = derive_passport_id(t["source_path"], t["tool_name"], t["command"]) == pid
-            except (KeyError, TypeError):
+                intact = passport_id_of(t) == pid
+            except (KeyError, TypeError, ValueError):
                 intact = False
             verdict = "integrity PASS" if intact else "integrity FAIL"
             color = c["accent"] if intact else c["red"]
