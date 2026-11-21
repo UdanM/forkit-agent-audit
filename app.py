@@ -28,6 +28,7 @@ from typing import Any
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
+from src.audit_archive import ArchiveError, git_available
 from src.capture.events import read_events
 from src.discovery_host import discovered_on_label, machine_name, record_discovery
 from src.engine import (
@@ -528,6 +529,7 @@ with st.sidebar:
             f.unlink()
         shutil.rmtree(LIVE, ignore_errors=True)
         shutil.rmtree(ACTIVITY_LIVE, ignore_errors=True)
+        shutil.rmtree(DATA / "audit-archive.git", ignore_errors=True)
         st.session_state.clear()
         restore_live_configs(v2=False)
         st.session_state.flash = ("success", "Demo reset: registry, links, incidents and changes cleared.")
@@ -626,6 +628,30 @@ with st.sidebar:
                                mime="application/json", width="stretch")
         c_md.download_button("Markdown", render_audit_markdown(audit), file_name=f"{base}.md",
                              mime="text/markdown", width="stretch")
+
+    with st.expander("Append-only Git archive"):
+        if not git_available():
+            st.caption("Git is not installed here, so the archive is unavailable.")
+        else:
+            archive_repo = eng.data_dir / "audit-archive.git"
+            st.caption("Every link, incident, review item, drift record and activity finding, committed to a "
+                       f"separate bare Git repository at `{store_label()}/audit-archive.git`. Earlier records can "
+                       "never change without verification failing.")
+            if st.button("Archive New Records", width="stretch"):
+                try:
+                    res = eng.archive_to_git(archive_repo, raw_secret_values=raw_secret_values())
+                    st.session_state.flash = ("success", f"Archive: +{res['added']} record(s), "
+                                              f"{res['total']} in total, verification {res['verify']['status']}.")
+                except (ArchiveError, PermissionError) as exc:
+                    st.session_state.flash = ("error", f"Archive refused: {exc}")
+                st.rerun()
+            arch = eng.archive_status(archive_repo)
+            if arch["status"] != "MISSING":
+                st.markdown(f'{status_badge(arch["status"])} <span class="mono">{arch["commits"]} commits · '
+                            f'{arch["records"]} records · head {html.escape((arch["head"] or "none")[:12])}</span>',
+                            unsafe_allow_html=True)
+                for prob in arch["problems"]:
+                    st.error(prob)
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 

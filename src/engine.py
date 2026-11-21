@@ -1092,6 +1092,42 @@ class AutoDiscoverEngine:
     def review_queue(self) -> list[dict[str, Any]]:
         return _read_json(self.review_path, [])
 
+    # ── Git audit archive (merge M5, see src/audit_archive.py) ─────────────────
+
+    @property
+    def anchor_path(self) -> Path:
+        return self.data_dir / "archive_anchor.json"
+
+    def archive_status(self, repo: str | Path) -> dict[str, Any]:
+        from .audit_archive import verify_archive
+        return verify_archive(repo, _read_json(self.anchor_path, {}).get("head"))
+
+    def archive_to_git(self, repo: str | Path, raw_secret_values: list[str] | None = None) -> dict[str, Any]:
+        """Append new governance records to the append-only Git archive.
+
+        Refuses to write on top of an archive that fails verification, and
+        refuses any batch that contains a raw secret value or token pattern.
+        """
+        from .audit_archive import (
+            ArchiveError,
+            append_records,
+            collect_records,
+            init_archive,
+            verify_archive,
+        )
+        init_archive(repo)
+        before = self.archive_status(repo)
+        if before["status"] == "FAIL":
+            raise ArchiveError("Archive failed verification; not writing on top of it: "
+                               + "; ".join(before["problems"]))
+        raw = [v for v in (raw_secret_values or []) if v]
+        res = append_records(repo, collect_records(self.data_dir), when=_now(),
+                             leak_check=lambda text: _leak_kinds(text, raw))
+        if res["head"]:
+            _write_json(self.anchor_path, {"head": res["head"], "saved_at": _now()})
+        res["verify"] = verify_archive(repo, res["head"])
+        return res
+
     # ── Activity timeline (merge M4, see src/timeline.py) ─────────────────────
 
     def log_checkpoints(self) -> dict[str, dict[str, Any]]:

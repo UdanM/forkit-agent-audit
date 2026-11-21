@@ -46,6 +46,7 @@ registry_test/
 data/*.json
 data/live_configs/
 data/activity_live/
+data/audit-archive.git/
 data/sessions/
 data/local/
 __pycache__/
