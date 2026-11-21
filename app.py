@@ -8,7 +8,7 @@ Journey: Discover → Match → Suggest → Review → Link.
 How the v2 toggle works
 -----------------------
 Discovery scans a *live config workspace* (``data/live_configs/fixtures/``) that
-is restored from ``fixtures/`` on reset. "Load v2 Config Update" copies the v2
+is restored from ``fixtures/`` on reset. "Simulate a settings edit" copies the v2
 contents over the live ``claude_desktop_config.json``, which simulates the user
 editing that file in place. Because the file path is unchanged, filesystem-mcp
 keeps the same passport_id and the engine flags a metadata change on it, exactly
@@ -61,7 +61,7 @@ DATA = ROOT / "data"
 # Hosted demo (e.g. Streamlit Community Cloud): set AUTODISCOVER_PER_SESSION=1 so every visitor gets
 # their own data folder and two people clicking at once never see each other's passports.
 if os.environ.get("AUTODISCOVER_PER_SESSION") == "1":
-    # Keyed by Streamlit's browser-session id, which survives the in-app "Simulate Restart" (that only
+    # Keyed by Streamlit's browser-session id, which survives the in-app "Simulate app restart" (that only
     # clears st.session_state), so a visitor's own registry is still there to be recognized.
     _ctx = get_script_run_ctx()
     DATA = DATA / "sessions" / ((_ctx.session_id if _ctx else uuid.uuid4().hex).replace("-", "")[:16])

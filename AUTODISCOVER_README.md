@@ -177,7 +177,7 @@ the exact facts it used. Findings are saved to `policy_findings.json` in the act
 demo, `data/local/` for real-machine mode) and never written into `passports.json`.
 
 ### 7. One-click compliance & audit bundle
-**Download Governance Audit Report** in the sidebar exports a timestamped ZIP,
+**Download audit report (ZIP)** in the sidebar exports a timestamped ZIP,
 `autodiscover-audit-<demo|local>-<UTC timestamp>.zip`. The **JSON** and **Markdown** buttons next to it
 download the report alone.
 
@@ -306,31 +306,31 @@ streamlit run app.py
    ```
 5. Click **Deploy**. Dependencies come from `requirements.txt`; the first start takes about a minute.
 
-On the hosted app, demo mode works as on a laptop. **Scan Real Local Machine** scans the cloud server, so it
+On the hosted app, demo mode works as on a laptop. **Scan this computer** scans the cloud server, so it
 correctly reports 0 configs; run the app locally to scan your own computer.
 
 The pitch cover slide is in [`docs/cover/`](docs/cover/autodiscover-cover.pdf) (PDF and PNG).
 
 ## 90-second demo script
 
-Start from **1-Click Reset Demo State** in the sidebar. Each tab shows a *Next demo step* hint.
+Start from **Start the demo over** in the sidebar. Each tab shows a *Next step* hint. In a hurry? **Set up the demo in one click** scans and registers all three sample tools, so you can jump straight to step 3.
 
 | # | Click | Say |
 |---|---|---|
-| 1 | **Tools** → *Scan Local MCP Configs* | "Three MCP servers found. Secrets are redacted at discovery, and the disk check proves no raw secret value is stored." |
-| 2 | **Passports** → mint all three | "Owner and version are UNKNOWN because the config doesn't say. Both postgres-mcp tools share a name but have different provenance, so they get different IDs." |
-| 3 | Sidebar → **Simulate Restart** | "All memory is wiped. The re-scan matched 3 of 3 tools to the same passport IDs, with zero duplicates." |
-| 4 | Sidebar → **Load v2 Config Update** → **Changes** | "Someone edited filesystem-mcp. It's the same passport, but we flag the diff. The read-only evidence is gone, so access mode is now UNKNOWN until a human reviews it." |
-| 5 | **Event review** → pick `evt-0002` → *Link Event* without consent | "Linking is blocked without explicit consent." |
-| 6 | Tick consent → *Link Event* | "Source and timestamp are recorded. MISSING_APPROVAL comes from approvals.json, and the incident shows a read-only tool tried to write." |
-| 7 | Pick `evt-0003` → choose the filesystem-mcp passport → consent → *Link Event* | "You can't attach an event to the wrong tool." |
+| 1 | **Tools** → *Scan for AI tools* | "Three MCP servers found. Secrets are redacted at discovery, and the disk check proves no raw secret value is stored." |
+| 2 | **Passports** → *Register tool* on all three | "Owner and version are UNKNOWN because the config doesn't say. Both postgres-mcp tools share a name but have different provenance, so they get different IDs." |
+| 3 | Sidebar → **Simulate app restart** | "All memory is wiped. The re-scan matched 3 of 3 tools to the same passport IDs, with zero duplicates." |
+| 4 | Sidebar → **Simulate a settings edit** → **Changes** | "Someone edited filesystem-mcp. It's the same passport, but we flag the diff. The read-only evidence is gone, so access mode is now UNKNOWN until a human reviews it." |
+| 5 | **Event review** → pick `evt-0002` → *Link action to tool* without consent | "Linking is blocked without explicit consent." |
+| 6 | Tick consent → *Link action to tool* | "Source and timestamp are recorded. *No approval on file* comes from approvals.json, and the incident shows a read-only tool tried to write." |
+| 7 | Pick `evt-0003` → choose the filesystem-mcp passport → consent → *Link action to tool* | "You can't attach an event to the wrong tool." |
 | 7b | Pick `evt-0004` | "It only says postgres-mcp, and two configs have one. That's ambiguous, so the engine refuses to link it. We record it for review with the actor UNKNOWN." |
 | 8 | **Map** | "Each row reads left to right: config file, tool, passport, event, incident. Everything joins by passport_id, and the passport itself never changes." |
-| 8b | **Activity timeline** → *Save Log Checkpoint* → *Simulate Log Tampering* | "The helper was declared read-only and still edited a protected file. Its own report disagrees with the observer. And when someone edits the log afterwards, the checkpoint catches it: POL-006, critical." |
-| 9 | Sidebar → **Download Governance Audit Report** | "Integrity and secret scan both PASS. The report is tamper-evident and every file is checksummed." |
+| 8b | **Activity timeline** → *Save log checkpoint* → *Simulate log tampering* | "The helper was declared read-only and still edited a protected file. Its own report disagrees with the observer. And when someone edits the log afterwards, the checkpoint catches it: POL-006, critical." |
+| 9 | Sidebar → **Download audit report (ZIP)** | "Integrity and secret scan both PASS. The report is tamper-evident and every file is checksummed." |
 
 ### Real local machine mode
-Pick **Scan Real Local Machine** in the sidebar to run the same pipeline on your own computer. It's a
+Pick **Scan this computer** in the sidebar to run the same pipeline on your own computer. It's a
 read-only scan of these well-known locations:
 
 | OS | Claude Desktop | Cursor | VS Code |
@@ -362,7 +362,7 @@ with the home folder masked, and an extension's declared version and publisher c
 - Run Streamlit on your own computer for this mode. In a cloud container it correctly reports 0 configs.
 
 ### Live agents: captured local and cloud runs
-Pick **Live agents (captured runs)** in the sidebar and click **Run Agent Scenarios**. Real agents then
+Pick **Live agents (captured runs)** in the sidebar and click **Run agent scenarios**. Real agents then
 work on synthetic files while AutoDiscover captures each tool call:
 
 - **Local:** a scripted LangGraph agent (no LLM) talks to the real `@modelcontextprotocol/server-filesystem`
@@ -387,7 +387,7 @@ delegation chains and file actions.
   carries `deployment`, `agent_id` and `instance_id`. A name, a path or the agent's own report never makes one.
 - **Unknown stays UNKNOWN.** A change with no observed run has actor UNKNOWN.
 - **Self-reports are checked, not trusted.** Rows an agent reports about itself are compared with the observer.
-- **Tamper evidence.** *Save Log Checkpoint* stores `LENGTH:SHA256` of the log; any later rewrite or truncation
+- **Tamper evidence.** *Save log checkpoint* stores `LENGTH:SHA256` of the log; any later rewrite or truncation
   raises `POL-006` (critical).
 - **Rules are data.** The 13 checks (read-only write, protected file, missing approval, unknown actor, access
   escalation, config file change, sequence gap, clock drift, self-report mismatch, rename or move, missing

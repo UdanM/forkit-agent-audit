@@ -5,7 +5,7 @@ synthetic. No LLM is involved: the agent steps are fixed, so every run is reprod
 
 ```bash
 pip install -e ".[langgraph]"                      # optional: without it the same steps run as a plain loop
-python -m demo.agents.run_scenarios --consent      # or click "Run Agent Scenarios" in the app (Source: Live agents)
+python -m demo.agents.run_scenarios --consent      # or click "Run agent scenarios" in the app (Source: Live agents)
 ```
 
 ## How actions are captured
