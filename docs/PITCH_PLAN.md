@@ -41,9 +41,9 @@ people install AI tools faster than anyone can review them."
 
 ## 1:15 to 3:45 · Live demo: one user flow, no feature tour
 
-Show `autodiscover-demo-v3.mp4` (1:06, subtitled, silent). It's one story: **a tool is found → gets an ID card →
-does something it shouldn't → is traced → anyone can ask about it.** Pause on each still frame, say one
-sentence, and press play. Five pauses at about 15 seconds each, plus 66 seconds of video, comes to about 2:30.
+Show `autodiscover-demo-v4.mp4` (1:23, subtitled, silent; full spoken lines per pause in `docs/DEMO_VIDEO_V4_SCRIPT.md`). It's one story: **a tool is found → gets an ID card →
+does something it shouldn't → is traced → anyone can ask about it.** Pause when the PAUSE marker appears (0:07, 0:24, 0:40, 0:55, 1:12),
+say the lines, and press play. Five pauses at about 15 seconds each, plus 83 seconds of video, comes to about 2:40.
 
 | Pause | Say (one sentence) |
 |---|---|
