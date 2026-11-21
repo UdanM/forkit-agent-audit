@@ -124,6 +124,7 @@ code, .mono { font-family: var(--ad-mono) !important; }
 .card.audit    { border-color:#C7D3EA; }
 .muted { color:var(--ad-muted); }
 .mono { font-size:0.84rem; color:#292524; }
+.purpose { font-size:1rem; line-height:1.55; color:var(--ad-ink); max-width:62rem; margin:-4px 0 14px 0; }
 .kv { display:flex; flex-wrap:nowrap; align-items:baseline; column-gap:6px; margin:3px 0; }
 .kv > b { flex:0 0 140px; color:var(--ad-muted); font-weight:500; font-size:0.9rem; }
 .kv > :not(b) { min-width:0; }
@@ -237,6 +238,24 @@ LOGO_SVG = (
     '<circle cx="13" cy="19" r="7" fill="#C25E3A"/>'
     '<path d="M14 18 L14 12.07 A7 7 0 0 1 19.93 18 Z" fill="#E9B8A3"/></svg>'
 )
+
+
+TAB_PURPOSE = {
+    1: "AutoDiscover reads the AI tool settings already on a computer and lists every tool it finds. "
+       "Passwords and keys are removed before anything is saved.",
+    2: "Each tool gets a permanent ID card, called a passport. Anything the settings do not state is marked "
+       "UNKNOWN instead of guessed, and two tools with the same name are never mixed up.",
+    3: "When someone edits a tool's settings, its ID stays the same but the change is flagged for a person to "
+       "review. Company rules are checked automatically, and each finding shows its evidence.",
+    4: "When a tool does something, the action is filed under that tool's ID card, but only with explicit "
+       "permission. Actions without approval, or outside what the tool may do, become incidents.",
+    5: "The whole chain on one page: where each tool was configured, its ID card, what it did, and what still "
+       "needs attention.",
+}
+
+
+def tab_purpose(step: int) -> None:
+    st.markdown(f'<p class="purpose">{html.escape(TAB_PURPOSE[step])}</p>', unsafe_allow_html=True)
 
 
 def sidebar_section(title: str) -> None:
@@ -484,7 +503,7 @@ with st.sidebar:
         '</div><div class="metrics">'
         f'<div class="mrow"><span>Integrity · {integ["passports_checked"]} passports</span>'
         f'{status_badge(integ["status"])}</div>'
-        f'<div class="mrow"><span>Secret scan · {len(scan["files_scanned"])} files</span>'
+        f'<div class="mrow"><span>Secret scan · {len(scan["files_scanned"])} file{"" if len(scan["files_scanned"]) == 1 else "s"}</span>'
         f'{status_badge(scan["status"])}</div></div>',
         unsafe_allow_html=True,
     )
@@ -554,6 +573,7 @@ candidates: list[dict[str, Any]] = st.session_state.candidates
 
 with tab1:
     st.subheader("Find MCP servers on this machine")
+    tab_purpose(1)
     demo_hint(1)
     if real_mode():
         st.caption("Read-only scan of the well-known Claude Desktop, Cursor and VS Code MCP config locations "
@@ -591,17 +611,21 @@ with tab1:
             "args": " ".join(c["args"]),
             "env": ", ".join(f'{k}="{v}"' for k, v in c["env"].items()) or "none",
             "owner": c["owner"],
+            "discovered_on": "Demo fixtures" if not real_mode() else discovered_on_label(eng.data_dir, c["passport_id"], demo=False),
             "version": c["version"],
             "access_mode": c["access_mode"],
             "config_hash": c["config_hash"][:12] + "…",
         } for c in candidates]
         col = st.column_config.TextColumn
         st.dataframe(rows, width="stretch", hide_index=True, column_config={
-            "tool_name": col("tool_name", width=125), "client": col("client", width=125),
-            "source_path": col("source_path", width=268), "command": col("command", width=80),
-            "args": col("args", width=280, help="Full args (secrets redacted); hover a cell to read it all"),
-            "env": col("env", width=180), "owner": col("owner", width=95), "version": col("version", width=90),
-            "access_mode": col("access_mode", width=110), "config_hash": col("config_hash", width=120),
+            "tool_name": col("Tool", width=125), "client": col("Client", width=115),
+            "source_path": col("Config file", width=250), "command": col("Command", width=85),
+            "args": col("Arguments", width=240, help="Full arguments, secrets redacted. Hover a cell to read it all."),
+            "env": col("Environment", width=170), "owner": col("Owner", width=95),
+            "discovered_on": col("Discovered on", width=150,
+                                 help="Machine the scan ran on. Context only: not the owner, never part of the passport ID."),
+            "version": col("Version", width=90), "access_mode": col("Access", width=100),
+            "config_hash": col("Config hash", width=115),
         })
 
         redacted = [(c, k) for c in candidates for k, v in c["env"].items() if v == REDACTED]
@@ -629,6 +653,7 @@ with tab1:
 
 with tab2:
     st.subheader("Review each server and issue its passport")
+    tab_purpose(2)
     demo_hint(2)
     st.caption(
         "passport_id = compute_id(passport_type='mcp_server', name, version='UNKNOWN', "
@@ -666,16 +691,16 @@ with tab2:
                     f'<div class="card-body">'
                     f'<div class="card-head"><h4>{html.escape(c["tool_name"])}</h4><span>{changed}{status}</span></div>'
                     f'{warn}'
-                    f'<div class="kv"><b>policy</b><span>{rule_badges(c.get("policy_findings", [])) or "none"}</span></div>'
-                    f'<div class="kv"><b>client</b>{value_badge(c["client"])}</div>'
-                    f'<div class="kv"><b>source_path</b>{value_badge(c["source_path"])}</div>'
-                    f'<div class="kv"><b>command</b>{value_badge(c["command"])}</div>'
-                    f'<div class="kv"><b>owner</b>{value_badge(c["owner"])}</div>'
-                    f'<div class="kv"><b>discovered on</b>{found_on_html(c["passport_id"])}</div>'
-                    f'<div class="kv"><b>version</b>{value_badge(c["version"])}</div>'
-                    f'<div class="kv"><b>access_mode</b>{value_badge(c["access_mode"])}</div>'
-                    f'<div class="kv"><b>passport_id</b><span class="mono">{short(c["passport_id"])}</span></div>'
-                    f'<div class="kv"><b>provenance</b><span class="mono">{c["provenance_hash"][:12]}…</span></div>'
+                    f'<div class="kv"><b>Policy</b><span>{rule_badges(c.get("policy_findings", [])) or "none"}</span></div>'
+                    f'<div class="kv"><b>Client</b>{value_badge(c["client"])}</div>'
+                    f'<div class="kv"><b>Config file</b>{value_badge(c["source_path"])}</div>'
+                    f'<div class="kv"><b>Command</b>{value_badge(c["command"])}</div>'
+                    f'<div class="kv"><b>Owner</b>{value_badge(c["owner"])}</div>'
+                    f'<div class="kv"><b>Discovered on</b>{found_on_html(c["passport_id"])}</div>'
+                    f'<div class="kv"><b>Version</b>{value_badge(c["version"])}</div>'
+                    f'<div class="kv"><b>Access</b>{value_badge(c["access_mode"])}</div>'
+                    f'<div class="kv"><b>Passport ID</b><span class="mono">{short(c["passport_id"])}</span></div>'
+                    f'<div class="kv"><b>Provenance</b><span class="mono">{c["provenance_hash"][:12]}…</span></div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
@@ -703,6 +728,7 @@ with tab2:
 
 with tab3:
     st.subheader("Config changes and policy findings")
+    tab_purpose(3)
     demo_hint(3)
     changed = [c for c in candidates if c.get("metadata_changed")]
     if real_mode():
@@ -772,6 +798,7 @@ with tab3:
 
 with tab4:
     st.subheader("Link runtime events to passports")
+    tab_purpose(4)
     demo_hint(4)
     events = load_events()
     passports = eng.passports()
@@ -789,7 +816,8 @@ with tab4:
             }
             ev_id = st.selectbox("Runtime event", list(ev_labels), format_func=ev_labels.get, key="ev_select")
             event = next(e for e in events if e["event_id"] == ev_id)
-            st.json(event, expanded=False)
+            with st.expander("Raw event record"):
+                st.json(event)
         with right:
             pids = list(passports)
             labels = {p: f'{passports[p]["tool_name"]} @ {passports[p]["source_path"]} · {short(p)}' for p in pids}
@@ -805,7 +833,7 @@ with tab4:
                     "Linking to another passport will be blocked as a source mismatch."
                 )
                 match = pids[0]
-            target = st.selectbox("Target passport_id", pids, index=pids.index(match),
+            target = st.selectbox("File under passport", pids, index=pids.index(match),
                                   format_func=labels.get, key=f"target_{ev_id}")
             consent = st.checkbox("I grant explicit consent to link this event", key=f"consent_{ev_id}")
             if st.button("Link Event", type="primary", width="stretch"):
@@ -880,6 +908,7 @@ with tab4:
 
 with tab5:
     st.subheader("Where every record comes from")
+    tab_purpose(5)
     demo_hint(5)
     store = eng.data_dir                              # data/ (demo) or data/local/ (real machine), read-only
     st.markdown("**How a passport is made.** The ID comes only from where the tool is configured. "

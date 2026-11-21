@@ -1,5 +1,11 @@
 # AutoDiscover: Zero-Touch AI Onboarding & Passports
 
+[![license](https://img.shields.io/badge/license-Apache%202.0-3f7cc4)](LICENSE)
+[![python](https://img.shields.io/badge/python-3.10%2B-2b2f5c)](pyproject.toml)
+[![streamlit](https://img.shields.io/badge/streamlit-1.67-C25E3A)](requirements.txt)
+[![tests](https://img.shields.io/badge/tests-70%20passing-2f7a4f)](#quickstart)
+[![status](https://img.shields.io/badge/status-hackathon%20prototype-d9884a)](#)
+
 Forkit AI Hackathon submission. AutoDiscover finds the AI tools (MCP servers) configured on a machine,
 turns them into a **metadata-only inventory** with **stable passport IDs**, flags **config drift**, and links
 runtime events to passports **only with explicit consent**, recording missing approvals and
@@ -8,6 +14,17 @@ out-of-expected-behavior incidents along the way.
 It is built on top of Forkit Core in this repository. Passport IDs come from Forkit Core's own
 `forkit.domain.identity.compute_id`, and hashing uses `forkit.domain.hashing.HashEngine`.
 The original project README is untouched in [`README.md`](README.md).
+
+### In plain words
+
+Companies now run many AI tools, and often nobody knows which ones are installed or what they did.
+AutoDiscover answers that, one tab at a time:
+
+1. **Discover.** It reads the AI tool settings already on a computer and lists every tool. Passwords and keys are removed first.
+2. **Identity.** Each tool gets a permanent ID card (a passport). Facts the settings don't state are marked UNKNOWN, never guessed.
+3. **Drift and rules.** If someone edits a tool's settings, the ID stays the same and the change is flagged for review. Company rules are checked automatically.
+4. **Linking.** Actions a tool takes are filed under its ID card, only with permission. Actions without approval, or outside what the tool may do, become incidents.
+5. **Map.** One page shows the whole chain, from settings file to ID card to action to incident.
 
 ### Phase 2 at a glance (for the judges)
 
