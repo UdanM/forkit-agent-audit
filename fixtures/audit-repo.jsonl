@@ -1,0 +1,1 @@
+{"id":"audit-demo-001","time":"2026-11-20T17:45:00Z","source":"synthetic collector","kind":"file_write","operation":"write","path":"demo/status.txt","run_id":"demo-helper","parent_id":"demo-parent","tool":"demo-editor","patch":"diff --git a/demo/status.txt b/demo/status.txt\n--- a/demo/status.txt\n+++ b/demo/status.txt\n@@ -1 +1 @@\n-draft\n+ready\n"}

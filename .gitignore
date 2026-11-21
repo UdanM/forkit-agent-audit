@@ -1,0 +1,10 @@
+__pycache__/
+*.sqlite3
+*.sqlite3-journal
+/forkit-audit-demo.git/
+/.forkit-pilot-data/
+*.sqlite3-wal
+*.sqlite3-shm
+/.forkit-vm.json
+/Forkit Preview.html
+/Forkit Pilot Preview.html
