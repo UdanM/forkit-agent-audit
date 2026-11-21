@@ -37,7 +37,8 @@ from src.engine import (
     raw_secret_values_from_configs,
     render_audit_markdown,
 )
-from src.provenance_view import lifecycle_dot, live_map_dot
+from src.live_map_html import live_map_html
+from src.provenance_view import lifecycle_dot
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 
@@ -887,13 +888,14 @@ with tab5:
         format_func=lambda p: "All tools" if p is None else
         f'{map_passports[p]["tool_name"]} @ {map_passports[p]["source_path"]} · {short(p)}',
     )
-    dot = live_map_dot(store, candidates=st.session_state.candidates, focus=focus)
-    if dot is None:
+    live = live_map_html(store, candidates=st.session_state.candidates, focus=focus)
+    if live is None:
         st.info("Nothing to map yet. Scan in **01 Discover** (and mint in **02 Identity & Review**) and the live map of configs, passports, "
                 "events and incidents appears here.")
     else:
         with st.container(border=True, key="graphframe_live"):
-            st.graphviz_chart(dot, width="stretch")
-        st.caption("Read left to right: config file → passport (compute_id, integrity re-derived) → records "
-                   "joined by passport_id → incident. Dashed = candidate not minted yet · red = "
-                   "MISSING_APPROVAL or incident · orange = drift or same-name tools kept apart.")
+            st.html(live)
+        st.caption("Read each row left to right: the config file that declares a tool, the passport issued for it, "
+                   "runtime events linked to that passport, and any incident they caused. Open checks are drift and "
+                   "policy findings still waiting for a reviewer. Red means no approval or an incident. A dashed "
+                   "passport has not been issued yet.")
