@@ -35,11 +35,14 @@ not create a new tool.
 from __future__ import annotations
 
 import difflib
+import hashlib
+import io
 import json
 import os
 import re
 import sys
 import tempfile
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -61,6 +64,10 @@ __all__ = [
     "load_policies",
     "category_evidence",
     "evaluate_policies",
+    "raw_secret_values_from_configs",
+    "report_sha256",
+    "render_audit_markdown",
+    "build_audit_bundle",
     "AutoDiscoverEngine",
 ]
 
@@ -638,6 +645,199 @@ def evaluate_policies(
     return findings
 
 
+# ── Audit export helpers ───────────────────────────────────────────────────────
+
+STORE_FILES = ("passports.json", "metadata_changes.json", "linked_events.json", "incidents.json",
+               "policy_findings.json")
+_LEAK_PATTERNS: dict[str, re.Pattern[str]] = {
+    "url_password": re.compile(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^:/@\s\"]+:(?!\[REDACTED\]@)[^@\s\"]+@"),
+    "token_prefix": re.compile(
+        r"\b(sk-[A-Za-z0-9_-]{8,}|sk_live_[A-Za-z0-9]{8,}|ghp_[A-Za-z0-9]{20,}|github_pat_\w{20,}|"
+        r"xox[abp]-[\w-]{10,}|AKIA[0-9A-Z]{16}|AIza[\w-]{30,}|glpat-[\w-]{20,})"
+    ),
+}
+
+
+def raw_secret_values_from_configs(paths: list[str | Path]) -> list[str]:
+    """Raw env/header values from MCP configs, for in-memory leak checks only.
+
+    Unreadable or malformed files are skipped. The values must never be
+    stored or displayed; callers only compare against them.
+    """
+    values: list[str] = []
+    for path in paths:
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        servers = (data.get("mcpServers") or data.get("servers") or {}) if isinstance(data, dict) else {}
+        for spec in servers.values() if isinstance(servers, dict) else []:
+            if isinstance(spec, dict):
+                for key in ("env", "headers"):
+                    mapping = spec.get(key)
+                    if isinstance(mapping, dict):
+                        values += [str(v) for v in mapping.values() if v not in (None, "")]
+    return sorted(set(values))
+
+
+def _leak_kinds(text: str, raw_values: list[str]) -> list[str]:
+    kinds = []
+    # Check both the raw form and its JSON-escaped form (quotes, backslashes, unicode).
+    if any(v and (v in text or json.dumps(v)[1:-1] in text) for v in raw_values):
+        kinds.append("raw_value")
+    kinds += [name for name, pat in _LEAK_PATTERNS.items() if pat.search(text)]
+    return kinds
+
+
+def _scrub(obj: Any, raw_values: list[str]) -> Any:
+    """Deep-redact raw values and secret patterns (used only when a leak is found)."""
+    if isinstance(obj, str):
+        for v in raw_values:
+            if v:
+                obj = obj.replace(v, REDACTED)
+        obj = _redact_string(obj)
+        return _LEAK_PATTERNS["token_prefix"].sub(REDACTED, obj)
+    if isinstance(obj, list):
+        return [_scrub(x, raw_values) for x in obj]
+    if isinstance(obj, dict):
+        return {_scrub(k, raw_values): _scrub(v, raw_values) for k, v in obj.items()}
+    return obj
+
+
+def report_sha256(report: dict[str, Any]) -> str:
+    """SHA-256 of json.dumps(report minus 'report_sha256', sort_keys=True), UTF-8."""
+    body = {k: v for k, v in report.items() if k != "report_sha256"}
+    return hashlib.sha256(json.dumps(body, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _md_cell(value: Any) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def _md_table(headers: list[str], rows: list[list[Any]]) -> str:
+    if not rows:
+        return "_None._\n"
+    out = ["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
+    out += ["| " + " | ".join(_md_cell(c) for c in r) + " |" for r in rows]
+    return "\n".join(out) + "\n"
+
+
+def render_audit_markdown(report: dict[str, Any]) -> str:
+    """Human-readable rendering of a build_audit_report() result."""
+    s, integ, scan = report["summary"], report["integrity"], report["secret_scan"]
+    sev = ", ".join(f"{k}: {v}" for k, v in s["policy_findings_by_severity"].items()) or "none"
+    lines = [
+        "# AutoDiscover Governance Audit Report",
+        "",
+        f"- **Report ID:** `{report['report_id']}`",
+        f"- **Generated at (UTC):** {report['generated_at']}",
+        f"- **Mode:** {report['mode']} · **Platform:** {report['platform']}",
+        f"- **Report SHA-256:** `{report['report_sha256']}` (canonical JSON, sort_keys=True, excluding this field)",
+        "",
+        "## Verdict",
+        "",
+        f"- **Passport integrity:** {integ['status']} ({integ['passports_checked']} checked, "
+        f"{len(integ['mismatches'])} mismatched)",
+        f"- **Secret scan:** {scan['status']} ({len(scan['files_scanned'])} files scanned, "
+        f"{scan['raw_values_checked']} raw secret values checked, {len(scan['leaks'])} leaks)",
+        "",
+        "## Summary",
+        "",
+        _md_table(["Metric", "Count"], [
+            ["Confirmed passports", s["passports"]],
+            ["Metadata changes", s["metadata_changes"]],
+            ["Consented event links", s["linked_events"]],
+            ["Links with MISSING_APPROVAL", s["missing_approval_links"]],
+            ["Incidents", s["incidents"]],
+            ["Policy findings", f"{s['policy_findings']} ({sev})"],
+        ]),
+        "## Confirmed passports",
+        "",
+        _md_table(["Passport ID", "Tool", "Source", "Client", "Owner", "Version", "Access mode"], [
+            [f"`{p['passport_id'][:12]}…`", p.get("tool_name"), p.get("source_path"), p.get("client"),
+             p.get("owner"), p.get("version"), p.get("access_mode")] for p in report["passports"]
+        ]),
+        "## Approval coverage",
+        "",
+        _md_table(["Tool", "Source", "Approval", "Approval ID"], [
+            [a["tool_name"], a["source_path"], a["state"], a["approval_id"]] for a in report["approval_coverage"]
+        ]),
+        "## Metadata changes",
+        "",
+        _md_table(["Tool", "Status", "Detected", "Diff"], [
+            [c.get("tool_name"), c.get("status"), c.get("detected_at"), "; ".join(c.get("diff", []))]
+            for c in report["metadata_changes"]
+        ]),
+        "## Consented event links",
+        "",
+        _md_table(["Event", "Tool call", "Timestamp", "Source", "Approval", "Flags", "Policy"], [
+            [l_.get("event_id"), l_.get("tool_call"), l_.get("timestamp"),
+             (l_.get("source") or {}).get("config_path", UNKNOWN) if isinstance(l_.get("source"), dict) else UNKNOWN,
+             l_.get("approval_status"), ", ".join(l_.get("flags", [])) or "—",
+             ", ".join(l_.get("policy_flags", [])) or "—"] for l_ in report["linked_events"]
+        ]),
+        "## Incidents",
+        "",
+        _md_table(["Incident", "Type", "Tool", "Action", "Result", "Timestamp", "Approval"], [
+            [i.get("incident_id"), i.get("type"), i.get("tool_name"), i.get("tool_call"), i.get("result"),
+             i.get("timestamp"), i.get("approval_status")] for i in report["incidents"]
+        ]),
+        "## Policy findings",
+        "",
+        _md_table(["Rule", "Severity", "Title", "Tool", "Evidence"], [
+            [f["rule_id"], f["severity"], f["title"], f["tool_name"],
+             ", ".join(f"{k}={v}" for k, v in f["evidence"].items())] for f in report["policy_findings"]
+        ]),
+        "## Integrity mismatches",
+        "",
+        _md_table(["Passport ID", "Reason"], [[m["passport_id"], m["reason"]] for m in integ["mismatches"]]),
+        "## Secret scan",
+        "",
+        f"Patterns checked: {', '.join(scan['pattern_checks'])}. Raw secret values are compared in memory only "
+        "and never written to this report.",
+        "",
+        _md_table(["File", "Leak kinds"], [[x["file"], ", ".join(x["kinds"])] for x in scan["leaks"]]),
+    ]
+    return "\n".join(lines)
+
+
+def build_audit_bundle(
+    report: dict[str, Any],
+    store_dir: str | Path,
+    inputs: list[str | Path] | None = None,
+) -> bytes:
+    """ZIP bundle: report.json, report.md, store/*, inputs/*, SHA256SUMS.
+
+    Entry names and SHA256SUMS use POSIX '/' paths. Refuses (PermissionError)
+    when the report's secret scan failed, so a leak is never redistributed.
+    """
+    if report["secret_scan"]["status"] != "PASS":
+        files = ", ".join(sorted({x["file"] for x in report["secret_scan"]["leaks"]}))
+        raise PermissionError(f"Audit bundle blocked: secret leak detected in {files}")
+    store = Path(store_dir)
+    entries: dict[str, bytes] = {
+        "report.json": (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+        "report.md": render_audit_markdown(report).encode("utf-8"),
+    }
+    for name in STORE_FILES:
+        if (store / name).is_file():
+            entries[f"store/{name}"] = (store / name).read_bytes()
+    for inp in inputs or []:
+        if Path(inp).is_file():
+            entries[f"inputs/{Path(inp).name}"] = Path(inp).read_bytes()
+    sums = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in sorted(entries.items()))
+    entries["SHA256SUMS"] = sums.encode("utf-8")
+
+    buf = io.BytesIO()
+    stamp = datetime.fromisoformat(report["generated_at"]).timetuple()[:6]
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in entries.items():
+            info = zipfile.ZipInfo(PurePosixPath(name).as_posix(), date_time=stamp)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            zf.writestr(info, data)
+    return buf.getvalue()
+
+
 # ── Engine ─────────────────────────────────────────────────────────────────────
 
 class AutoDiscoverEngine:
@@ -770,6 +970,109 @@ class AutoDiscoverEngine:
             f["last_evaluated_at"] = now
         _write_json(path, findings)
         return findings
+
+    # ── Audit export (read-only) ───────────────────────────────────────────────
+
+    def build_audit_report(
+        self,
+        candidates: list[dict[str, Any]] | None = None,
+        raw_secret_values: list[str] | None = None,
+        mode: str = "demo",
+        platform: str | None = None,
+    ) -> dict[str, Any]:
+        """Timestamped, tamper-evident governance snapshot of this engine's store.
+
+        Read-only: policies are evaluated in memory and nothing is written.
+        Works on an empty or freshly reset store (all counts 0). Raw secret
+        values are compared in memory and never copied into the report; if a
+        leak is found the report content is scrubbed and secret_scan = FAIL.
+        """
+        store = self.data_dir
+        passports = _read_json(self.passports_path, {})
+        changes = self.metadata_changes()
+        links = self.linked_events()
+        incidents = self.incidents()
+        approvals = self.approvals()
+        findings = evaluate_policies(self.policies(), candidates or [], passports, approvals, links)
+        raw = [v for v in (raw_secret_values or []) if v]
+
+        # Integrity: every stored ID must re-derive from its own provenance.
+        mismatches = []
+        for key, p in sorted(passports.items()):
+            try:
+                derived = derive_passport_id(p["source_path"], p["tool_name"], p["command"])
+            except (KeyError, TypeError):
+                mismatches.append({"passport_id": key, "reason": "missing_provenance_fields"})
+                continue
+            if derived != key or p.get("passport_id") != key:
+                mismatches.append({"passport_id": key, "reason": "id_does_not_match_provenance"})
+
+        # Leak scan over every store file (by name only; values never echoed).
+        leaks, scanned = [], []
+        for name in STORE_FILES:
+            f = store / name
+            if f.is_file():
+                scanned.append(name)
+                kinds = _leak_kinds(f.read_text(encoding="utf-8", errors="replace"), raw)
+                if kinds:
+                    leaks.append({"file": name, "kinds": kinds})
+
+        coverage = []
+        for pid, p in sorted(passports.items()):
+            state, appr_id = _approval_state(pid, approvals)
+            coverage.append({"passport_id": pid, "tool_name": p.get("tool_name", UNKNOWN),
+                             "source_path": p.get("source_path", UNKNOWN), "state": state,
+                             "approval_id": appr_id or UNKNOWN})
+        severity = {s: sum(f["severity"] == s for f in findings) for s in reversed(SEVERITIES)}
+        now = _now()
+        body: dict[str, Any] = {
+            "report_type": "autodiscover.governance_audit",
+            "schema_version": 1,
+            "report_id": "aud-" + re.sub(r"[^0-9]", "", now)[:14],
+            "generated_at": now,
+            "mode": mode,
+            "platform": _normalize_platform(platform),
+            "summary": {
+                "passports": len(passports),
+                "candidates_unconfirmed": sum(1 for c in candidates or [] if c["passport_id"] not in passports),
+                "metadata_changes": len(changes),
+                "linked_events": len(links),
+                "missing_approval_links": sum(1 for x in links if x.get("approval_status") == MISSING_APPROVAL),
+                "incidents": len(incidents),
+                "policy_findings": len(findings),
+                "policy_findings_by_severity": {k: v for k, v in severity.items() if v},
+            },
+            "passports": [passports[k] for k in sorted(passports)],
+            "approval_coverage": coverage,
+            "metadata_changes": changes,
+            "linked_events": links,
+            "missing_approval_link_ids": [x["link_id"] for x in links if x.get("approval_status") == MISSING_APPROVAL],
+            "incidents": incidents,
+            "policy_findings": findings,
+            "integrity": {
+                "status": "PASS" if not mismatches else "FAIL",
+                "passports_file_present": self.passports_path.is_file(),
+                "passports_file_sha256": (hashlib.sha256(self.passports_path.read_bytes()).hexdigest()
+                                          if self.passports_path.is_file() else None),
+                "passports_checked": len(passports),
+                "mismatches": mismatches,
+            },
+        }
+        # The report itself is part of the leak scan.
+        own = _leak_kinds(json.dumps(body, sort_keys=True), raw)
+        if own and not leaks:
+            leaks.append({"file": "report", "kinds": own})
+        if leaks:
+            body = _scrub(body, raw)
+        body["secret_scan"] = {
+            "status": "PASS" if not leaks else "FAIL",
+            "files_scanned": scanned,
+            "raw_values_checked": len(raw),
+            "pattern_checks": sorted(_LEAK_PATTERNS),
+            "leaks": leaks,
+        }
+        body["report_sha256"] = report_sha256(body)
+        return body
 
     # ── 2. Minting ─────────────────────────────────────────────────────────────
 

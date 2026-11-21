@@ -32,7 +32,10 @@ from src.engine import (
     REDACTED,
     UNKNOWN,
     AutoDiscoverEngine,
+    build_audit_bundle,
     known_config_locations,
+    raw_secret_values_from_configs,
+    render_audit_markdown,
 )
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -184,24 +187,15 @@ def load_events() -> list[dict[str, Any]]:
     return [json.loads(line) for line in EVENTS_FILE.read_text().splitlines() if line.strip()]
 
 
+def scanned_config_paths() -> list[Path]:
+    if real_mode():
+        return [loc["path"] for loc in known_config_locations() if loc["path"] is not None]
+    return [LIVE / cfg for cfg in CONFIGS]
+
+
 def raw_secret_values() -> list[str]:
     """Raw env/header values from the scanned configs, held in memory only to prove none hit disk."""
-    if real_mode():
-        paths = [loc["path"] for loc in known_config_locations() if loc["path"] is not None]
-    else:
-        paths = [LIVE / cfg for cfg in CONFIGS]
-    values: list[str] = []
-    for path in paths:
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        servers = (data.get("mcpServers") or data.get("servers") or {}) if isinstance(data, dict) else {}
-        for spec in servers.values():
-            if isinstance(spec, dict):
-                for key in ("env", "headers"):
-                    values += [str(v) for v in (spec.get(key) or {}).values() if v]
-    return values
+    return raw_secret_values_from_configs(scanned_config_paths())
 
 
 def leaked_secrets() -> list[str]:
@@ -317,6 +311,32 @@ with st.sidebar:
     else:
         st.caption(f"Config mode: **{'v2 (edited)' if st.session_state.v2_active else 'v1 (original)'}**")
         st.caption("Source of truth: `data/passports.json`")
+
+    # ── One-click compliance & audit bundle (read-only snapshot) ──
+    st.divider()
+    st.markdown("**🧾 Governance audit**")
+    audit = eng.build_audit_report(
+        candidates=st.session_state.candidates,
+        raw_secret_values=raw_secret_values(),
+        mode="real-local-machine" if real_mode() else "demo",
+    )
+    integ, scan = audit["integrity"], audit["secret_scan"]
+    st.caption(f"Integrity **{integ['status']}** ({integ['passports_checked']} passports) · "
+               f"Secret scan **{scan['status']}** ({len(scan['files_scanned'])} files)")
+    stamp = audit["generated_at"][:19].replace("-", "").replace(":", "") + "Z"
+    base = f"autodiscover-audit-{'local' if real_mode() else 'demo'}-{stamp}"
+    try:
+        bundle = build_audit_bundle(audit, eng.data_dir, inputs=[APPROVALS_FILE, eng.policies_path])
+    except PermissionError as exc:
+        st.error(f"🚫 {exc}. Fix the leak, then the download returns.")
+    else:
+        st.download_button("📦 Download Governance Audit Report", bundle, file_name=f"{base}.zip",
+                           mime="application/zip", width="stretch", type="primary")
+        c_json, c_md = st.columns(2)
+        c_json.download_button("JSON", json.dumps(audit, indent=2, sort_keys=True), file_name=f"{base}.json",
+                               mime="application/json", width="stretch")
+        c_md.download_button("Markdown", render_audit_markdown(audit), file_name=f"{base}.md",
+                             mime="text/markdown", width="stretch")
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 

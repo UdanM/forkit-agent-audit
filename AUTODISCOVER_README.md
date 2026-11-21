@@ -103,6 +103,36 @@ and without evidence the category is `UNKNOWN`, so `POL-001` cannot fire on a gu
 the exact facts it used. Findings are saved to `policy_findings.json` in the active store (`data/` for the
 demo, `data/local/` for real-machine mode) and never written into `passports.json`.
 
+### 7. One-click compliance & audit bundle
+**📦 Download Governance Audit Report** in the sidebar exports a timestamped ZIP,
+`autodiscover-audit-<demo|local>-<UTC timestamp>.zip`. The **JSON** and **Markdown** buttons next to it
+download the report alone.
+
+| Entry | Contents |
+|---|---|
+| `report.json` | Summary counts, confirmed passports, approval coverage, metadata diffs, consented event links, `MISSING_APPROVAL` link IDs, incidents, policy findings, integrity and secret-scan verdicts |
+| `report.md` | The same report as readable tables |
+| `store/*.json` | The exact store files the report was built from |
+| `inputs/approvals.json`, `inputs/policies.json` | The approvals and rules that were applied |
+| `SHA256SUMS` | `sha256sum -c`-compatible checksums, with POSIX `/` paths |
+
+- **Read-only:** building the report never writes to the store, since policies are evaluated in memory.
+  An empty or freshly reset store exports cleanly with all counts at 0.
+- **Integrity:** every passport ID is re-derived from its stored `source_path`, `tool_name` and `command`.
+  Any mismatch, for example a hand-edited command, sets `integrity.status = FAIL`.
+- **Secret scan:** every store file and the report itself are checked against the raw secret values from
+  the scanned configs (held in memory only, so the report contains only a count) and against URL-password
+  and known-token patterns. On a leak, the report content is scrubbed, `secret_scan.status = FAIL`, and the
+  ZIP download is **blocked**. The error names the file, never the value.
+- **Tamper evidence:** `report_sha256` is the SHA-256 of
+  `json.dumps(report_without_report_sha256, sort_keys=True)` in UTF-8. To verify it:
+
+```python
+import hashlib, json
+r = json.load(open("report.json")); claimed = r.pop("report_sha256")
+assert hashlib.sha256(json.dumps(r, sort_keys=True).encode("utf-8")).hexdigest() == claimed
+```
+
 ---
 
 ## Architecture & data boundary
@@ -143,8 +173,8 @@ Requires Python 3.10+. Run everything from the repository root.
 ```bash
 pip install -r requirements.txt
 
-# Acceptance (6) + real-machine discovery (12) + policy-as-code (17) tests
-python -m pytest tests/test_acceptance.py tests/test_local_discovery.py tests/test_policies.py -v
+# Acceptance (6) + real-machine discovery (12) + policy-as-code (17) + audit export (10) tests
+python -m pytest tests/test_acceptance.py tests/test_local_discovery.py tests/test_policies.py tests/test_audit.py -v
 
 # Live demo
 streamlit run app.py
