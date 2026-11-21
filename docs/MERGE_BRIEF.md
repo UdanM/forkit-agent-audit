@@ -24,6 +24,10 @@ app.py (Streamlit) ── reads/writes only through AutoDiscoverEngine; views in
 | `src/live_map_html.py` | Read-only HTML views: `lifecycle_html` and `live_map_html` (shown in tab 05). | ~270 |
 | `src/provenance_view.py` | Read-only Graphviz DOT builders (`lifecycle_dot`, `live_map_dot`), plus `load_store`. Kept for export and tests. | ~280 |
 | `src/discovery_host.py` | "Discovered on" machine name, stored as a sidecar keyed by `passport_id`. | ~75 |
+| `src/installed.py` | Installed AI clients (CLIs, desktop apps, editor extensions) as their own passport types. | ~200 |
+| `src/timeline.py` | Activity timeline: observer-log parser, runs, agents, delegation, 13 checks, log checkpoints. | ~430 |
+| `src/audit_archive.py` | Append-only bare Git archive of governance records, with a history verifier. | ~230 |
+| `src/ask.py` | Ask AutoDiscover: record matching with citations, optional local Ollama model. | ~170 |
 | `app.py` | Streamlit UI: five tabs, sidebar metrics, audit download. No business logic. | ~1,000 |
 | `src/capture/` | Live capture: `mcp_tap.py` (stdio MCP proxy, enforces `--read-only`), `collector.py` (token-checked HTTP), `events.py` (metadata-only events). | ~370 |
 | `demo/agents/` | Live-agent demo: configs, synthetic workspace, approvals, scripted LangGraph agent, n8n workflow, `run_scenarios.py`. | |
@@ -91,6 +95,10 @@ Main engine entry points: `discover_tools`, `scan_local_machine`, `derive_passpo
 
 ## 3. Tests and CI
 
+*Updated after the merge with forkit-agent-audit:* 158 AutoDiscover tests (532 with Forkit Core's own), see
+the README for the per-file list.
+
+
 - **AutoDiscover tests (83):** `test_acceptance.py` (6), `test_local_discovery.py` (12),
   `test_policies.py` (17), `test_audit.py` (10), `test_provenance_view.py` (14),
   `test_live_map_html.py` (6), `test_discovery_host.py` (5), `test_capture.py` (11) and
@@ -140,7 +148,18 @@ Main engine entry points: `discover_tools`, `scan_local_machine`, `derive_passpo
 | Another UI or a CLI | Use `AutoDiscoverEngine` directly; `app.py` holds no logic. |
 | Extra context per tool | A sidecar keyed by `passport_id`, like `src/discovery_host.py`. Never add it to the ID inputs. |
 
-## 7. Questions to compare against your project
+## 7. Merge status (2026-11-21)
+
+Merged with [UdanM/forkit-agent-audit](https://github.com/UdanM/forkit-agent-audit) @ `3f5b2aa`. Ported, each
+as its own tested commit on `main`: wider discovery (`414f340`), installed AI clients (`6811e62`),
+ambiguity-safe linking and review queue (`ca726e5`), activity timeline with observer identity, delegation and
+log checkpoints (`3922bb3`), append-only Git archive (`afbc7d7`), delegated-helper pilot (`4a7f446`), Ask
+AutoDiscover (`b65f1b5`), launchers (`ed9da68`). Several weak spots in section 5 are now addressed: the demo
+has observer-based activity capture (tab 06), and the Git archive adds history-level tamper evidence. Still
+open: an in-app approval workflow, multi-user storage (SQLite is a candidate, as in forkit-agent-audit), and
+URL-only servers in the identity inputs.
+
+## 8. Questions to compare against your project
 
 - [ ] How do you derive a tool's identity? Does it survive a restart and a reinstall, and is it the same on
       every machine?

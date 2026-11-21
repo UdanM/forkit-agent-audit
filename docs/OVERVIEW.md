@@ -39,9 +39,20 @@ waiting for review, rule findings, and incidents.
 | **03 Drift & Governance** | Turn on **Load v2 Config Update** in the sidebar | Someone edited a tool's settings. The tool keeps its passport, and the change is flagged for review. The company rules (`POL-001` to `POL-005`) list what needs attention and show their evidence. |
 | **04 Linking & Incidents** | Pick event `evt-0002`, tick the consent box, click **Link Event** | The action is filed under the right passport. A tool that may only read tried to write a file, so an **incident** is recorded. |
 | **05 Provenance Map** | Just look | One page showing the whole chain: settings file, tool, passport, event and incident. |
+| **06 Activity Timeline** | Click **Save Log Checkpoint**, then **Simulate Log Tampering** | Which agent run did what and who handed it the work. A helper that was only allowed to read edited a protected file, and its own report says otherwise. When the log is edited afterwards, a critical finding appears. |
+
+Event `evt-0004` in tab 04 names only `postgres-mcp`, which two settings files share. AutoDiscover will not
+guess which one: it refuses the link and keeps the event in a review queue, with the actor marked UNKNOWN.
+
+**Ask AutoDiscover**, under the title, answers questions such as "What needs review?" from the records,
+and shows which records the answer comes from.
 
 In the sidebar, **Simulate Restart** wipes the app's memory and scans again: the same tools get the same
-passports. **Download Governance Audit Report** exports everything as a checked ZIP file.
+passports. **Download Governance Audit Report** exports everything as a checked ZIP file, and
+**Append-only Git archive** keeps every record in a Git history that cannot be rewritten unnoticed.
+
+This version combines our project with our teammate's
+[forkit-agent-audit](https://github.com/UdanM/forkit-agent-audit); see the README's merge section.
 
 ## How to try it
 

@@ -4,13 +4,19 @@
 [![python](https://img.shields.io/badge/python-3.10%2B-2b2f5c)](pyproject.toml)
 [![streamlit](https://img.shields.io/badge/streamlit-1.67-C25E3A)](requirements.txt)
 [![CI](https://github.com/eren-mutlu/forkit-autodiscover-hackathon/actions/workflows/ci.yml/badge.svg)](https://github.com/eren-mutlu/forkit-autodiscover-hackathon/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/AutoDiscover%20tests-70%20passing-2f7a4f)](#quickstart)
+[![tests](https://img.shields.io/badge/AutoDiscover%20tests-158%20passing-2f7a4f)](#quickstart)
 [![status](https://img.shields.io/badge/status-hackathon%20prototype-d9884a)](#)
 
-Forkit AI Hackathon submission. AutoDiscover finds the AI tools (MCP servers) configured on a machine,
+Forkit AI Hackathon submission. AutoDiscover finds the AI tools configured or installed on a machine (MCP servers, AI CLIs, desktop apps and editor extensions),
 turns them into a **metadata-only inventory** with **stable passport IDs**, flags **config drift**, and links
 runtime events to passports **only with explicit consent**, recording missing approvals and
-out-of-expected-behavior incidents along the way.
+out-of-expected-behavior incidents along the way. An **activity timeline** shows which agent run did what,
+who delegated it, and whether the activity log itself was rewritten.
+
+> **Team merge.** This build combines our AutoDiscover with the best parts of our teammate's prototype,
+> [UdanM/forkit-agent-audit](https://github.com/UdanM/forkit-agent-audit): wider discovery, ambiguity-safe
+> linking, the activity timeline with observer evidence, the Git audit archive, the delegated-helper pilot,
+> Ask and the double-click launcher. See [Merged from forkit-agent-audit](#merged-from-forkit-agent-audit).
 
 It is built on top of Forkit Core in this repository. Passport IDs come from Forkit Core's own
 `forkit.domain.identity.compute_id`, and hashing uses `forkit.domain.hashing.HashEngine`.
@@ -28,6 +34,9 @@ AutoDiscover answers that, one tab at a time:
 3. **Drift and rules.** If someone edits a tool's settings, the ID stays the same and the change is flagged for review. Company rules are checked automatically.
 4. **Linking.** Actions a tool takes are filed under its ID card, only with permission. Actions without approval, or outside what the tool may do, become incidents.
 5. **Map.** One page shows the whole chain, from settings file to ID card to action to incident.
+6. **Activity timeline.** Which agent run did what, which helper it delegated to, and whether the activity log is still the one that was saved. An action nobody can be tied to stays UNKNOWN.
+
+Start it with a double-click on **`Start AutoDiscover.cmd`** (Windows) or `./start-autodiscover.sh` (macOS, Linux).
 
 ### What it looks like
 
@@ -45,17 +54,33 @@ AutoDiscover answers that, one tab at a time:
 | **Live agent capture** | Real agents (a scripted LangGraph agent on a real MCP file server, and an n8n workflow) run five scenarios, and every tool call is captured: locally by an MCP tap that also enforces read-only, in the cloud by a token-checked collector | sidebar "Live agents" · [details](#live-agents-captured-local-and-cloud-runs) |
 | **Provenance map** | Config → provenance hash → passport → events and incidents, drawn from live data as a row-by-row flow chart, with same-name tools visibly kept apart | 05 tab · [details](#8-visual-provenance--lifecycle-flow) |
 
+### Phase 3: merged with our teammate's prototype
+
+| Capability | What it proves | Where |
+|---|---|---|
+| **Wider discovery** | Claude Code (incl. per-project servers), Windsurf, Codex `config.toml`, VS Code Insiders and profiles, per-workspace configs; transport and explicit enabled state; disabling a server is drift | 01 · [details](#real-local-machine-mode) |
+| **Installed AI clients** | CLIs on PATH, desktop apps, editor extensions as their own passport types, so a CLI named `claude` never merges with an MCP server named `claude`; an extension upgrade is drift | 01 checkbox |
+| **Ambiguity-safe linking** | An event links only if its own source matches exactly one passport; ambiguous or source-less events go to a review queue, actor UNKNOWN | 04 · `evt-0004`, `evt-0005` |
+| **Activity timeline** | Agent identity only from observer evidence, delegation chains with PIDs, shared-file overlap, self-reports checked against the observer, `LENGTH:SHA256` log checkpoints; 13 checks as rules `POL-006`…`POL-018` | 06 tab · [details](#activity-timeline) |
+| **Git audit archive** | Every link, incident, review item, drift record and activity finding in an append-only bare Git repo; rewrites and replaced histories fail verification | sidebar · [details](#append-only-git-archive) |
+| **Delegated-helper pilot** | Real worker processes; a helper declared read-only edits a protected file and its own report says otherwise | Live agents scenario F |
+| **Ask AutoDiscover** | Short questions answered from records with citations; optional local model, loopback only | expander under the header |
+
 | File | Purpose |
 |---|---|
 | `src/engine.py` | Discovery (fixtures and real machine), redaction, identity, diffing, consented linking, incidents, policies, audit export |
 | `src/provenance_view.py` | Pure, read-only Graphviz DOT builders for the lifecycle diagram and the live map (kept for export and tests) |
 | `src/live_map_html.py` | Read-only HTML flow charts shown in the app: the lifecycle diagram and the live provenance map |
 | `src/discovery_host.py` | "Discovered on" machine name, stored as a sidecar record keyed by `passport_id` |
+| `src/installed.py` | Installed AI clients: CLIs on PATH, desktop apps, editor extensions |
+| `src/timeline.py` | Activity timeline: strict observer-log parser, runs, agents, delegation, checks, checkpoints |
+| `src/audit_archive.py` | Append-only Git archive and its verifier |
+| `src/ask.py` | Ask AutoDiscover: record matching with citations, optional local model |
 | `src/capture/` | Live capture: `mcp_tap.py` (stdio proxy), `collector.py` (HTTP), `events.py` (metadata-only event schema) |
-| `demo/agents/` | Agent configs, synthetic workspace, approvals, the scripted agent, the n8n workflow and `run_scenarios.py` |
+| `demo/agents/` | Agent configs, synthetic workspace, approvals, the scripted agent, the n8n workflow, `pilot.py` and `run_scenarios.py` |
 | `app.py` | Streamlit demo: Discover → Match → Suggest → Review → Link → Map |
-| `tests/` | `test_acceptance.py` (6) · `test_local_discovery.py` (12) · `test_policies.py` (17) · `test_audit.py` (10) · `test_provenance_view.py` (14) · `test_live_map_html.py` (6) · `test_discovery_host.py` (5) · `test_capture.py` (11) · `test_agent_scenarios.py` (2) |
-| `fixtures/` | Mock MCP configs, a v2 config edit, runtime events, approvals, policies |
+| `tests/` | `test_acceptance.py` (6) · `test_local_discovery.py` (12) · `test_policies.py` (17) · `test_audit.py` (10) · `test_provenance_view.py` (14) · `test_live_map_html.py` (6) · `test_discovery_host.py` (5) · `test_capture.py` (11) · `test_agent_scenarios.py` (2) · `test_wider_discovery.py` (14) · `test_installed_clients.py` (12) · `test_attribution.py` (8) · `test_timeline.py` (23) · `test_audit_archive.py` (7) · `test_pilot.py` (3) · `test_ask.py` (6) · `test_launchers.py` (2) |
+| `fixtures/` | Mock MCP configs, a v2 config edit, runtime events, approvals, policies, `activity/` observer log and agent self-report |
 
 ---
 
@@ -241,12 +266,15 @@ Requires Python 3.10+. Run everything from the repository root.
 ```bash
 pip install -r requirements.txt
 
-# All AutoDiscover tests (83): acceptance, real-machine discovery, policies, audit export, provenance views, discovered-on, live capture
+# All AutoDiscover tests (158)
 python -m pytest tests/test_acceptance.py tests/test_local_discovery.py tests/test_policies.py \
                  tests/test_audit.py tests/test_provenance_view.py tests/test_live_map_html.py \
-                 tests/test_discovery_host.py tests/test_capture.py tests/test_agent_scenarios.py -v
+                 tests/test_discovery_host.py tests/test_capture.py tests/test_agent_scenarios.py \
+                 tests/test_wider_discovery.py tests/test_installed_clients.py tests/test_attribution.py \
+                 tests/test_timeline.py tests/test_audit_archive.py tests/test_pilot.py tests/test_ask.py \
+                 tests/test_launchers.py -v
 
-# Live demo
+# Live demo (or double-click "Start AutoDiscover.cmd" on Windows, ./start-autodiscover.sh elsewhere)
 streamlit run app.py
 ```
 
@@ -296,7 +324,9 @@ Start from **1-Click Reset Demo State** in the sidebar. Each tab shows a *Next d
 | 5 | **04 Linking & Incidents** → pick `evt-0002` → *Link Event* without consent | "Linking is blocked without explicit consent." |
 | 6 | Tick consent → *Link Event* | "Source and timestamp are recorded. MISSING_APPROVAL comes from approvals.json, and the incident shows a read-only tool tried to write." |
 | 7 | Pick `evt-0003` → choose the filesystem-mcp passport → consent → *Link Event* | "You can't attach an event to the wrong tool." |
+| 7b | Pick `evt-0004` | "It only says postgres-mcp, and two configs have one. That's ambiguous, so the engine refuses to link it. We record it for review with the actor UNKNOWN." |
 | 8 | **05 Provenance Map** | "Each row reads left to right: config file, tool, passport, event, incident. Everything joins by passport_id, and the passport itself never changes." |
+| 8b | **06 Activity Timeline** → *Save Log Checkpoint* → *Simulate Log Tampering* | "The helper was declared read-only and still edited a protected file. Its own report disagrees with the observer. And when someone edits the log afterwards, the checkpoint catches it: POL-006, critical." |
 | 9 | Sidebar → **Download Governance Audit Report** | "Integrity and secret scan both PASS. The report is tamper-evident and every file is checksummed." |
 
 ### Real local machine mode
@@ -308,6 +338,18 @@ read-only scan of these well-known locations:
 | Windows | `%APPDATA%/Claude/claude_desktop_config.json` | `%USERPROFILE%/.cursor/mcp.json` | `%APPDATA%/Code/User/mcp.json` |
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` | `~/.cursor/mcp.json` | `~/Library/Application Support/Code/User/mcp.json` |
 | Linux | `~/.config/Claude/claude_desktop_config.json` | `~/.cursor/mcp.json` | `~/.config/Code/User/mcp.json` |
+
+Also on every OS: Claude Code `~/.claude.json` (user and per-project servers, each project its own source),
+Windsurf `~/.codeium/windsurf/mcp_config.json`, Codex `~/.codex/config.toml` (or `%CODEX_HOME%`), VS Code
+Insiders, and every VS Code profile under `User/profiles/<id>/mcp.json`. Optional **project folders** add
+`.vscode/mcp.json`, `.cursor/mcp.json`, `.mcp.json` and `.codex/config.toml`, labelled by folder name only.
+Each config read is capped at 1 MiB.
+
+With **Also find installed AI clients** ticked, the scan adds CLIs on PATH (`claude`, `codex`, `gemini`,
+`ollama`, `aider` and more), desktop apps in their install folders (Windows, macOS), and AI editor extensions
+(Copilot, Claude Code, Cline, Roo, Continue and more). Each is its own passport type, its location is stored
+with the home folder masked, and an extension's declared version and publisher come from its own
+`package.json`. Owner stays UNKNOWN. Nothing is launched.
 
 - Paths are stored as the tokens above (`~`, `%APPDATA%`), and the home directory inside args is masked as
   `~`, so OS usernames never reach the inventory and passport IDs stay stable per location.
@@ -329,12 +371,53 @@ work on synthetic files while AutoDiscover captures each tool call:
 - **Cloud:** an n8n workflow reads a report, writes a summary and POSTs its actions to the collector,
   which checks a token and re-builds every event.
 
-The five scenarios cover an approved read, a blocked write, the same tool name in another client, the n8n
-run, and a config edit that removes `--read-only` before a write. Linking still needs your consent tick in
+The six scenarios cover an approved read, a blocked write, the same tool name in another client, the n8n
+run, a config edit that removes `--read-only` before a write, and a delegated helper (two real processes,
+watched by an independent observer) that writes although it was declared read-only; see tab 06. Linking still needs your consent tick in
 **04 Linking & Incidents**. Same from the command line: `python -m demo.agents.run_scenarios --consent`.
 Details and requirements: [`demo/agents/README.md`](demo/agents/README.md).
 
 ![Live agents: captured scenarios](docs/images/autodiscover/06-live-agents.png)
+
+### Activity timeline
+Tab **06** reads an observer's activity log (JSON Lines), never writes to it, and builds runs, agents,
+delegation chains and file actions.
+
+- **Identity needs observer evidence.** An agent ID exists only when the observer's `run_started` row
+  carries `deployment`, `agent_id` and `instance_id`. A name, a path or the agent's own report never makes one.
+- **Unknown stays UNKNOWN.** A change with no observed run has actor UNKNOWN.
+- **Self-reports are checked, not trusted.** Rows an agent reports about itself are compared with the observer.
+- **Tamper evidence.** *Save Log Checkpoint* stores `LENGTH:SHA256` of the log; any later rewrite or truncation
+  raises `POL-006` (critical).
+- **Rules are data.** The 13 checks (read-only write, protected file, missing approval, unknown actor, access
+  escalation, config file change, sequence gap, clock drift, self-report mismatch, rename or move, missing
+  onboarding, run reuse, rewritten log) are rules `POL-006`…`POL-018` in `fixtures/policies.json`. The policy
+  loader only accepts these named checks.
+- **Metadata-only.** Paths must be relative to the workspace; a diff is reduced to its hash and size.
+
+Row shape: `{"id", "time", "kind": "run_started"|"file_write"|"tool_call", "run_id", "deployment", "sequence",
+"observed_at", ...}`. Run rows add `agent_id`, `instance_id`, `parent_id`, `label`, `location`, `access`
+(`read_only`|`write`), `pid`, `onboarded`; file rows add `path`, `operation`, `initiator_run_id`, `approval`,
+`protected`, `patch`. In real-machine mode, point the tab at any observer log; `python -m demo.agents.pilot
+<folder>` writes one.
+
+### Append-only Git archive
+The sidebar's **Append-only Git archive** commits every new link, incident, review item, drift record and
+activity finding to a bare Git repository next to the store (`audit-archive.git`), one commit per batch,
+with plumbing commands only (no hooks, no user config, fixed identity). Each commit may only append to
+`records.jsonl`; verification walks the history and also checks that the last head AutoDiscover wrote is still
+an ancestor, so a replaced history fails too. A batch with a raw secret or token pattern is refused.
+
+```bash
+git --git-dir data/audit-archive.git log --oneline
+git --git-dir data/audit-archive.git show main:records.jsonl
+```
+
+### Ask AutoDiscover
+The **Ask AutoDiscover** expander answers questions like "What needs review?", "Who changed
+reports/q3/summary.md?" or "Which tools did you find?" from the local records, with a citation per claim.
+Set `AUTODISCOVER_ASK_MODEL` to an installed Ollama model to have the answer rephrased locally: the model
+gets short evidence lines only, over loopback, and its answer is dropped unless every citation is valid.
 
 ### Out-of-order clicks are safe
 Each step shows guidance if it's used too early: restarting before anything is minted, loading v2 before
@@ -356,7 +439,9 @@ up as drift. `fixtures/` itself is never modified.
 | `claude_desktop_config.json` | `postgres-mcp` (fake `POSTGRES_URL` credential) and `filesystem-mcp` (Docker bind mount, `ro`) |
 | `cursor_mcp.json` | A second `postgres-mcp` pointing at a different database |
 | `claude_desktop_config_v2.json` | `filesystem-mcp` with `ro` removed and a `finance` mount added |
-| `runtime_events.jsonl` | `evt-0001` approved read, `evt-0002` unauthorized `fs.write_file`, `evt-0003` unapproved Cursor `pg.query` |
+| `runtime_events.jsonl` | `evt-0001` approved read, `evt-0002` unauthorized `fs.write_file`, `evt-0003` unapproved Cursor `pg.query`, `evt-0004` names only the shared `postgres-mcp` (ambiguous), `evt-0005` has no source (delete attempt) |
+| `activity/observer.jsonl` | Observer log: a report agent, its read-only helper writing a protected file, a Cursor run editing `.cursor/mcp.json`, a sequence gap, clock drift, two unknown actors, an access escalation, missing onboarding |
+| `activity/agent_reported.jsonl` | The helper's own report, which disagrees with the observer |
 | `approvals.json` | `filesystem-mcp` approved for read actions only; Claude `postgres-mcp` pending; Cursor `postgres-mcp` has no record |
 
 All credentials in the fixtures are fake (`FAKE_..._DO_NOT_USE`).
@@ -364,8 +449,31 @@ All credentials in the fixtures are fake (`FAKE_..._DO_NOT_USE`).
 ## Known limitations
 - Env values are redacted *before* hashing, so rotating only a secret value doesn't register as drift.
   This is deliberate: we never store a derivative of a secret.
-- Discovery reads the `mcpServers` shape (Claude Desktop, Cursor) and the `servers` shape (VS Code).
+- Discovery reads the `mcpServers` shape (Claude Desktop, Cursor, Claude Code, Windsurf), the `servers` shape (VS Code) and Codex's `[mcp_servers]` TOML.
 - The demo tab uses fixture events. Live capture exists (MCP tap and HTTP collector, see Live agents), but it
   covers stdio MCP servers and agents that report to the collector; there is no hook inside closed clients.
+- The activity timeline is only as complete as its observer. The pilot sees its own workspace around each
+  worker; it does not enforce OS permissions and is not a tamper-proof host monitor.
 - Approvals come from JSON files; there is no in-app approval flow yet.
 - Linking is idempotent per (`event_id`, `passport_id`).
+
+## Merged from forkit-agent-audit
+
+Our teammate built the same challenge as [UdanM/forkit-agent-audit](https://github.com/UdanM/forkit-agent-audit)
+(compared at commit `3f5b2aa`). We kept AutoDiscover's base (Forkit Core identity, redaction and leak scan,
+policy-as-code, audit ZIP, Streamlit UI, CI) and ported his strongest ideas into it, one tested commit each:
+
+| Ours now | From his | Commit |
+|---|---|---|
+| Wider MCP discovery, transport and enabled state | `discovery.py`, `scan()` | `414f340` |
+| Installed AI clients as passport types | `discovery.py` | `6811e62` |
+| Ambiguity-safe linking and review queue | `Inventory.candidates`, `fixtures/events.json` | `ca726e5` |
+| Activity timeline, observer identity, log checkpoints | `timeline.py`, `docs/scaling.md` | `3922bb3` |
+| Append-only Git archive | `audit_repo.py` | `afbc7d7` |
+| Delegated-helper pilot | `agent_pilot.py` | `4a7f446` |
+| Ask AutoDiscover | `local_ask.py` | `b65f1b5` |
+| Double-click launchers | `Start Forkit.cmd` | `ed9da68` |
+
+What we deliberately kept from AutoDiscover instead: Forkit Core `compute_id` (his IDs use absolute paths, so
+they differ per machine), redaction before hashing (his export drops fields instead), rules as data (his
+checks are code). Every port was re-implemented against our guardrails and tests, not copied.
