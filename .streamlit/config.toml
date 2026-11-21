@@ -1,0 +1,29 @@
+# Projector-first enterprise theme for the AutoDiscover demo.
+# Crisp light base, high-contrast text, one sharp accent, system sans-serif
+# fonts only (no web-font download, so it renders the same offline).
+
+[theme]
+base = "light"
+primaryColor = "#1f4fd8"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f6fa"
+textColor = "#0f172a"
+linkColor = "#1f4fd8"
+borderColor = "#d5dbe5"
+showWidgetBorder = true
+baseRadius = "0.5rem"
+baseFontSize = 17
+font = "'Segoe UI', Inter, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
+headingFont = "'Segoe UI', Inter, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
+codeFont = "Consolas, 'SF Mono', Menlo, ui-monospace, monospace"
+headingFontWeights = [700, 700, 650, 650, 600, 600]
+headingFontSizes = ["2.1rem", "1.7rem", "1.45rem", "1.15rem", "1rem", "0.9rem"]
+
+[theme.sidebar]
+backgroundColor = "#f4f6fa"
+secondaryBackgroundColor = "#ffffff"
+borderColor = "#d5dbe5"
+showSidebarBorder = true
+
+[client]
+toolbarMode = "minimal"

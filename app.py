@@ -55,31 +55,89 @@ APPROVALS_FILE = FIXTURES / "approvals.json"
 
 st.set_page_config(page_title="AutoDiscover · Forkit Passports", page_icon="🛂", layout="wide")
 
-# ── Styling (projector-friendly) ───────────────────────────────────────────────
+# ── Styling (projector-first enterprise theme; colours pair with .streamlit/config.toml) ──
+#
+# One status palette for every tab, the sidebar and the provenance map:
+#   PASS / APPROVED / CONFIRMED  green    UNKNOWN        amber
+#   CRITICAL / HIGH / MISSING_*  red      MEDIUM / drift orange
+#   LOW / CANDIDATE / neutral    slate    [REDACTED]     blue
 
 st.markdown(
     """
 <style>
-html, body, [class*="css"] { font-size: 18px; }
-.block-container { padding-top: 1.5rem; max-width: 1400px; }
+:root {
+  --ad-accent:#1f4fd8; --ad-ink:#0f172a; --ad-muted:#475569; --ad-line:#d5dbe5; --ad-soft:#f4f6fa;
+}
+.block-container, [data-testid="stMainBlockContainer"] { padding: 1.1rem 2.5rem 2rem 2.5rem; max-width: 1560px; }
+header[data-testid="stHeader"] { height: 2.25rem; background: transparent; }
+h3 { margin-top: 0.2rem !important; }
+
+/* Hero */
+.hero { display:flex; flex-wrap:wrap; align-items:center; gap:8px 20px; padding:0 0 10px 0;
+        border-bottom:1px solid var(--ad-line); margin-bottom:4px; }
+.hero-title { font-size:1.6rem; font-weight:750; color:var(--ad-ink); letter-spacing:-0.01em; line-height:1.15; }
+.hero-title .accent { color:var(--ad-accent); }
+.pills { display:flex; flex-wrap:wrap; gap:6px; }
+.pill { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px;
+        font-weight:650; font-size:0.86rem; color:var(--ad-ink); background:#fff;
+        border:1px solid var(--ad-line); }
+.pill::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--pill-dot); }
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] { gap: 2px; border-bottom:1px solid var(--ad-line); }
+.stTabs [data-baseweb="tab"] { padding: 10px 16px; border-radius:8px 8px 0 0; }
+.stTabs [data-baseweb="tab"] p { font-size:1.02rem; font-weight:650; }
+.stTabs [data-baseweb="tab"]:hover { background: var(--ad-soft); }
+.stTabs [aria-selected="true"] p { color: var(--ad-accent); }
+
+/* Status badges */
 .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-weight:700;
-         font-size:0.85rem; margin:2px 4px 2px 0; letter-spacing:0.02em; }
-.b-unknown  { background:#fff4d6; color:#7a5200; border:1px solid #e0b44c; }
+         font-size:0.84rem; margin:2px 4px 2px 0; letter-spacing:0.02em; line-height:1.35; }
+.b-ok       { background:#e3f6e8; color:#0f5a2a; border:1px solid #5fb87e; }
+.b-unknown  { background:#fff4d6; color:#6e4a00; border:1px solid #d9a93a; }
+.b-bad      { background:#fde6e6; color:#9b1419; border:1px solid #e06c70; }
+.b-warn     { background:#ffe9d6; color:#843800; border:1px solid #ea9450; }
+.b-slate    { background:#eef1f5; color:#334155; border:1px solid #b4bdca; }
+.b-neutral  { background:#eef1f5; color:#334155; border:1px solid #b4bdca; }
 .b-redacted { background:#e8eefc; color:#1d3f8f; border:1px solid #8aa6e6; }
-.b-ok       { background:#e3f6e8; color:#14632f; border:1px solid #6cc28a; }
-.b-bad      { background:#fde6e6; color:#a1161b; border:1px solid #ec7f83; }
-.b-warn     { background:#ffe9d6; color:#8a3b00; border:1px solid #f0a060; }
-.b-neutral  { background:#eef0f3; color:#333;    border:1px solid #c5cad3; }
-.card { border:1px solid #d8dce3; border-radius:12px; padding:14px 18px; margin-bottom:12px;
-        background:#ffffff; }
-.card h4 { margin:0 0 6px 0; font-size:1.15rem; }
-.card.merge-warn { border:2px solid #f0a060; background:#fffaf4; }
-.card.incident { border:3px solid #d62828; background:#fff3f3; }
-.card.audit { border:2px solid #4a6fd8; background:#f7f9ff; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.85rem; }
-.kv { margin:2px 0; }
-.kv b { display:inline-block; min-width:140px; color:#555; }
-.diff-del { color:#a1161b; } .diff-add { color:#14632f; }
+
+/* Cards */
+.card { border:1px solid var(--ad-line); border-radius:10px; padding:14px 18px; margin-bottom:12px;
+        background:#ffffff; box-shadow:0 1px 2px rgba(15,23,42,0.05);
+        transition:border-color .15s ease, box-shadow .15s ease; }
+.card:hover { border-color:#9fb0cc; box-shadow:0 2px 8px rgba(15,23,42,0.08); }
+.card h4 { margin:0 0 6px 0; font-size:1.12rem; font-weight:700; color:var(--ad-ink); }
+.card.merge-warn { border:2px solid #ea9450; background:#fffaf5; }
+.card.drift      { border:2px solid #ea9450; border-left-width:6px; background:#fffaf5; }
+.card.incident   { border:2px solid #d62828; border-left-width:6px; background:#fff5f5; }
+.card.audit      { border:1px solid #9fb3ea; border-left:6px solid var(--ad-accent); background:#f8faff; }
+.muted { color:var(--ad-muted); }
+.mono { font-family: Consolas, 'SF Mono', Menlo, ui-monospace, monospace; font-size:0.86rem; }
+.kv { margin:3px 0; }
+.kv b { display:inline-block; min-width:155px; color:var(--ad-muted); font-weight:600; }
+.diff-del { color:#9b1419; } .diff-add { color:#0f5a2a; }
+
+/* Buttons */
+.stButton button, .stDownloadButton button { font-weight:650; transition: box-shadow .15s ease, transform .05s ease; }
+.stButton button:hover, .stDownloadButton button:hover { box-shadow:0 2px 6px rgba(31,79,216,0.18); }
+.stButton button:active, .stDownloadButton button:active { transform: translateY(1px); }
+
+/* Sidebar */
+[data-testid="stSidebarUserContent"] { padding-top: 0.25rem; }
+[data-testid="stSidebarHeader"] { height: 2.25rem; padding-top: 0.75rem; padding-bottom: 0; }
+section[data-testid="stSidebar"] hr { margin: 0.7rem 0 !important; border-color: var(--ad-line); }
+.sb-brand { font-size:1.3rem; font-weight:750; color:var(--ad-ink); line-height:1.2; }
+.sb-tag { color:var(--ad-muted); font-size:0.82rem; margin-top:2px; }
+.sb-section { font-size:0.72rem; font-weight:750; letter-spacing:0.06em; text-transform:uppercase;
+              color:var(--ad-accent); margin:2px 0 8px 0; }
+.tiles { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:8px; }
+.tile { background:#fff; border:1px solid var(--ad-line); border-radius:8px; padding:6px 8px; text-align:center; }
+.tile .n { font-size:1.55rem; font-weight:750; color:var(--ad-ink); line-height:1.15; }
+.tile .l { font-size:0.72rem; color:var(--ad-muted); font-weight:600; line-height:1.2; }
+.tile.alert { border-color:#e06c70; background:#fff5f5; }
+.tile.alert .n { color:#9b1419; }
+.sb-status { font-size:0.86rem; margin:2px 0; }
+.sb-status b { display:inline-block; min-width:92px; color:var(--ad-muted); font-weight:600; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -88,6 +146,11 @@ html, body, [class*="css"] { font-size: 18px; }
 
 def badge(text: str, kind: str = "neutral") -> str:
     return f'<span class="badge b-{kind}">{html.escape(text)}</span>'
+
+
+def status_badge(status: str) -> str:
+    """PASS green, FAIL red: the same colours as every other status pill."""
+    return badge(status, "ok" if status == "PASS" else "bad")
 
 
 def value_badge(value: Any) -> str:
@@ -99,6 +162,10 @@ def value_badge(value: Any) -> str:
     if value == "read-only":
         return badge("read-only", "ok")
     return f'<span class="mono">{html.escape(str(value))}</span>'
+
+
+def sidebar_section(title: str) -> None:
+    st.markdown(f'<div class="sb-section">{html.escape(title)}</div>', unsafe_allow_html=True)
 
 
 DEMO_HINTS = {
@@ -121,7 +188,7 @@ def demo_hint(step: int) -> None:
     st.caption(f"🎬 Next demo step: {DEMO_HINTS[step]}")
 
 
-SEVERITY_KIND = {"critical": "bad", "high": "bad", "medium": "warn", "low": "unknown"}
+SEVERITY_KIND = {"critical": "bad", "high": "bad", "medium": "warn", "low": "slate"}
 
 
 def rule_badges(findings: list[dict[str, Any]]) -> str:
@@ -215,13 +282,16 @@ eng = engine()
 # ── Sidebar: demo superpowers ──────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("## 🛂 AutoDiscover")
-    st.caption("Zero-touch AI onboarding & passports · built on Forkit Core `compute_id`")
+    st.markdown('<div class="sb-brand">🛂 AutoDiscover</div>'
+                '<div class="sb-tag">Zero-touch AI onboarding &amp; passports · built on Forkit Core '
+                '<span class="mono">compute_id</span></div>', unsafe_allow_html=True)
     st.divider()
 
+    # ── Section 1: Discovery Mode ──
+    sidebar_section("Discovery Mode")
     mode_labels = {"demo": "🎭 Demo fixtures (default)", "real": "💻 Scan Real Local Machine"}
     picked = st.radio("Discovery mode", list(mode_labels), format_func=mode_labels.get,
-                      index=list(mode_labels).index(st.session_state.mode))
+                      index=list(mode_labels).index(st.session_state.mode), label_visibility="collapsed")
     if picked != st.session_state.mode:
         tab = st.session_state.get("active_tab")
         st.session_state.clear()
@@ -237,6 +307,9 @@ with st.sidebar:
         )
         st.rerun()
 
+    # ── Section 2: Demo Controls ──
+    st.divider()
+    sidebar_section("Demo Controls")
     if real_mode():
         if st.button("🧹 Clear Local Scan Registry", width="stretch", type="primary"):
             for f in LOCAL_DATA.glob("*.json"):
@@ -302,29 +375,39 @@ with st.sidebar:
             )
         st.rerun()
 
-    st.divider()
-    passports = eng.passports()
-    st.metric("Confirmed passports", len(passports))
-    st.metric("Linked events", len(eng.linked_events()))
-    st.metric("Incidents", len(eng.incidents()))
     if real_mode():
         st.caption("Config mode: **real local machine**")
-        st.caption("Source of truth: `data/local/passports.json`")
     else:
         st.caption(f"Config mode: **{'v2 (edited)' if st.session_state.v2_active else 'v1 (original)'}**")
-        st.caption("Source of truth: `data/passports.json`")
 
-    # ── One-click compliance & audit bundle (read-only snapshot) ──
+    # ── Section 3: Live Governance Metrics & Audit Export (read-only snapshot) ──
     st.divider()
-    st.markdown("**🧾 Governance audit**")
+    sidebar_section("Live Governance Metrics & Audit Export")
+    passports = eng.passports()
+    n_incidents = len(eng.incidents())
+    st.markdown(
+        '<div class="tiles">'
+        f'<div class="tile"><div class="n">{len(passports)}</div><div class="l">Confirmed passports</div></div>'
+        f'<div class="tile"><div class="n">{len(eng.linked_events())}</div><div class="l">Linked events</div></div>'
+        f'<div class="tile{" alert" if n_incidents else ""}"><div class="n">{n_incidents}</div>'
+        '<div class="l">Incidents</div></div></div>',
+        unsafe_allow_html=True,
+    )
     audit = eng.build_audit_report(
         candidates=st.session_state.candidates,
         raw_secret_values=raw_secret_values(),
         mode="real-local-machine" if real_mode() else "demo",
     )
     integ, scan = audit["integrity"], audit["secret_scan"]
-    st.caption(f"Integrity **{integ['status']}** ({integ['passports_checked']} passports) · "
-               f"Secret scan **{scan['status']}** ({len(scan['files_scanned'])} files)")
+    st.markdown(
+        f'<div class="sb-status"><b>Integrity</b>{status_badge(integ["status"])}'
+        f'<span class="muted">{integ["passports_checked"]} passports</span></div>'
+        f'<div class="sb-status"><b>Secret scan</b>{status_badge(scan["status"])}'
+        f'<span class="muted">{len(scan["files_scanned"])} files</span></div>',
+        unsafe_allow_html=True,
+    )
+    st.caption("Source of truth: `data/local/passports.json`" if real_mode()
+               else "Source of truth: `data/passports.json`")
     stamp = audit["generated_at"][:19].replace("-", "").replace(":", "") + "Z"
     base = f"autodiscover-audit-{'local' if real_mode() else 'demo'}-{stamp}"
     try:
@@ -342,10 +425,13 @@ with st.sidebar:
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 
-st.title("AutoDiscover: Zero-Touch AI Onboarding & Passports")
+PRINCIPLES = [("Metadata-only", "#1f4fd8"), ("Unknown stays UNKNOWN", "#d9a93a"),
+              ("No false merges", "#ea9450"), ("Consent-gated linking", "#2f9e5a")]
 st.markdown(
-    badge("Metadata-only", "redacted") + badge("Unknown stays UNKNOWN", "unknown")
-    + badge("No false merges", "warn") + badge("Consent-gated linking", "ok"),
+    '<div class="hero"><div class="hero-title">AutoDiscover: <span class="accent">Zero-Touch AI '
+    'Onboarding &amp; Passports</span></div><div class="pills">'
+    + "".join(f'<span class="pill" style="--pill-dot:{dot}">{html.escape(t)}</span>' for t, dot in PRINCIPLES)
+    + "</div></div>",
     unsafe_allow_html=True,
 )
 
@@ -443,7 +529,7 @@ with tab1:
             )
             st.markdown(
                 f'<div class="card"><h4>🔒 Secrets stripped at discovery</h4>{items}'
-                f'<div style="margin-top:8px;color:#555">Raw values are never hashed, stored, or displayed. '
+                f'<div class="muted" style="margin-top:8px">Raw values are never hashed, stored, or displayed. '
                 f'Only the env <i>key names</i> are kept.</div></div>',
                 unsafe_allow_html=True,
             )
@@ -552,14 +638,14 @@ with tab3:
                 "We will not assume <i>read-write</i> either, so it stays UNKNOWN until a human reviews it.</div>"
             )
         st.markdown(
-            f'<div class="card incident" style="border-color:#f0a060;background:#fffaf4">'
+            f'<div class="card drift">'
             f'<h4>⚠ METADATA CHANGED · {html.escape(c["tool_name"])} '
             f'<span class="mono">({short(c["passport_id"])})</span></h4>'
             f'{badge("Same passport_id", "ok")}{badge("PENDING_REVIEW", "warn")}'
             f'<div class="kv"><b>config_hash</b><span class="mono">{stored["config_hash"][:12]}… → '
             f'{c["config_hash"][:12]}…</span></div>'
             f'<div style="margin-top:8px">{"".join(lines)}</div>{reason}'
-            f'<div style="margin-top:10px;color:#555">The confirmed passport is unchanged. Drift is recorded in '
+            f'<div class="muted" style="margin-top:10px">The confirmed passport is unchanged. Drift is recorded in '
             f'<span class="mono">data/metadata_changes.json</span>.</div></div>',
             unsafe_allow_html=True,
         )
@@ -586,7 +672,7 @@ with tab3:
                 f'<div class="kv"><b>Tool</b><span class="mono">{html.escape(f["tool_name"])} '
                 f'({short(f["passport_id"])}) · {html.escape(f["subject_type"])}</span></div>'
                 f'<div class="kv"><b>Evidence</b><span class="mono">{html.escape(ev)}</span></div>'
-                f'<div style="color:#555;margin-top:4px">{html.escape(f["explanation"])}</div></div>',
+                f'<div class="muted" style="margin-top:4px">{html.escape(f["explanation"])}</div></div>',
                 unsafe_allow_html=True,
             )
 
@@ -657,7 +743,7 @@ with tab4:
                 f'<div class="kv"><b>Timestamp</b><span class="mono">{html.escape(link["timestamp"])}</span></div>'
                 f'<div class="kv"><b>Passport</b><span class="mono">{short(link["passport_id"])}</span></div>'
                 f'<div class="kv"><b>Approval</b>{appr} {value_badge(link["approval_id"])} '
-                f'<span style="color:#555">(verified against fixtures/approvals.json)</span></div>'
+                f'<span class="muted">(verified against fixtures/approvals.json)</span></div>'
                 f'<div class="kv"><b>Runtime consent</b>{value_badge(link["runtime_consent_id"])}</div>'
                 f'<div class="kv"><b>Link consent</b>{badge("GRANTED", "ok")}</div>'
                 f'<div class="kv"><b>Policy</b>'
@@ -669,7 +755,7 @@ with tab4:
                 inc = next((i for i in eng.incidents() if i["incident_id"] == link["incident_id"]), None)
                 if inc:
                     st.markdown(
-                        f'<div class="card incident"><h4 style="color:#a1161b;font-size:1.4rem">'
+                        f'<div class="card incident"><h4 style="color:#9b1419;font-size:1.35rem">'
                         f'🚨 INCIDENT RECORDED: Out-of-Expected-Behavior</h4>'
                         f'<div class="kv"><b>Incident</b><span class="mono">{html.escape(inc["incident_id"])}</span></div>'
                         f'<div class="kv"><b>Tool</b><span class="mono">{html.escape(inc["tool_name"])} '
@@ -679,7 +765,7 @@ with tab4:
                         f'<div class="kv"><b>Expected</b>{badge(inc["expected_behavior"], "ok")}</div>'
                         f'<div class="kv"><b>Approval</b>{badge(inc["approval_status"], "bad" if inc["approval_status"] != APPROVED else "ok")}</div>'
                         f'<div class="kv"><b>Timestamp</b><span class="mono">{html.escape(inc["timestamp"])}</span></div>'
-                        f'<div style="margin-top:8px;color:#555">Written to <span class="mono">data/incidents.json</span>.</div></div>',
+                        f'<div class="muted" style="margin-top:8px">Written to <span class="mono">data/incidents.json</span>.</div></div>',
                         unsafe_allow_html=True,
                     )
 
