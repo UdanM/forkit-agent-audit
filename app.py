@@ -28,6 +28,7 @@ from typing import Any
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
+from src.ask import ask as ask_question
 from src.audit_archive import ArchiveError, git_available
 from src.capture.events import read_events
 from src.discovery_host import discovered_on_label, machine_name, record_discovery
@@ -45,6 +46,7 @@ from src.engine import (
     workspace_config_locations,
 )
 from src.live_map_html import lifecycle_html, live_map_html
+from src.timeline import timeline_from_files
 
 KIND_LABELS = {"mcp_server": "MCP server", "cli_tool": "CLI", "desktop_app": "Desktop app",
                "editor_extension": "Editor extension"}
@@ -662,6 +664,50 @@ st.markdown(
 )
 
 
+def activity_sources() -> tuple[str, Path | None, Path | None]:
+    """(label, observer log, self-reported log) for the current mode. Logs are only read."""
+    if demo_mode():
+        ACTIVITY_LIVE.mkdir(parents=True, exist_ok=True)
+        for name in ("observer.jsonl", "agent_reported.jsonl"):
+            if not (ACTIVITY_LIVE / name).exists():
+                shutil.copy(ACTIVITY_FIXTURES / name, ACTIVITY_LIVE / name)
+        return "demo", ACTIVITY_LIVE / "observer.jsonl", ACTIVITY_LIVE / "agent_reported.jsonl"
+    if agents_mode():
+        log, rep = AGENTS / "pilot" / "observer.jsonl", AGENTS / "pilot" / "agent_reported.jsonl"
+        return "agents-pilot", (log if log.is_file() else None), (rep if rep.is_file() else None)
+    obs = st.session_state.get("activity_observer", "").strip()
+    rep = st.session_state.get("activity_reported", "").strip()
+    obs_p = Path(obs).expanduser() if obs else None
+    rep_p = Path(rep).expanduser() if rep else None
+    return ("local", obs_p if obs_p and obs_p.is_file() else None, rep_p if rep_p and rep_p.is_file() else None)
+
+
+def ask_store() -> dict[str, Any]:
+    """Everything Ask AutoDiscover may cite, read-only."""
+    label, obs, rep = activity_sources()
+    tl = timeline_from_files(obs, rep, rules=eng.policies(), namespace=label) if obs else None
+    return {"passports": eng.passports(), "links": eng.linked_events(), "incidents": eng.incidents(),
+            "review_queue": eng.review_queue(), "policy_findings": audit["policy_findings"], "timeline": tl}
+
+
+with st.expander("Ask AutoDiscover"):
+    q_col, b_col = st.columns([5, 1])
+    question = q_col.text_input("Question", key="ask_q", label_visibility="collapsed",
+                                placeholder="What needs review?  ·  Who changed reports/q3/summary.md?  ·  "
+                                            "Which tools did you find?")
+    if b_col.button("Ask", width="stretch") and question.strip():
+        st.session_state.ask_result = ask_question(question, ask_store())
+    res = st.session_state.get("ask_result")
+    if res:
+        st.markdown(f"**{html.escape(res['answer'])}**")
+        for c in res["citations"]:
+            st.markdown(f'{badge(c["kind"], "neutral")} <span class="mono">{html.escape(c["id"])}</span> '
+                        f'{html.escape(c["text"])}', unsafe_allow_html=True)
+        st.caption(f"Answered from {res.get('source', 'records')}. Matching runs on local records only"
+                   + ("" if res.get("source", "records") != "records" else
+                      "; set AUTODISCOVER_ASK_MODEL to an installed Ollama model to have it rephrased locally") + ".")
+
+
 def _read_scenarios() -> dict[str, Any]:
     try:
         return json.loads((AGENTS / "scenarios.json").read_text(encoding="utf-8"))
@@ -1222,24 +1268,6 @@ with tab5:
 # ── 06 Activity Timeline ──────────────────────────────────────────────────────
 
 _SEV_KIND = {"critical": "bad", "high": "bad", "medium": "warn", "low": "slate"}
-
-
-def activity_sources() -> tuple[str, Path | None, Path | None]:
-    """(label, observer log, self-reported log) for the current mode. Logs are only read."""
-    if demo_mode():
-        ACTIVITY_LIVE.mkdir(parents=True, exist_ok=True)
-        for name in ("observer.jsonl", "agent_reported.jsonl"):
-            if not (ACTIVITY_LIVE / name).exists():
-                shutil.copy(ACTIVITY_FIXTURES / name, ACTIVITY_LIVE / name)
-        return "demo", ACTIVITY_LIVE / "observer.jsonl", ACTIVITY_LIVE / "agent_reported.jsonl"
-    if agents_mode():
-        log, rep = AGENTS / "pilot" / "observer.jsonl", AGENTS / "pilot" / "agent_reported.jsonl"
-        return "agents-pilot", (log if log.is_file() else None), (rep if rep.is_file() else None)
-    obs = st.session_state.get("activity_observer", "").strip()
-    rep = st.session_state.get("activity_reported", "").strip()
-    obs_p = Path(obs).expanduser() if obs else None
-    rep_p = Path(rep).expanduser() if rep else None
-    return ("local", obs_p if obs_p and obs_p.is_file() else None, rep_p if rep_p and rep_p.is_file() else None)
 
 
 with tab6:
