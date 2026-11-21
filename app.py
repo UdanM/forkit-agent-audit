@@ -55,7 +55,7 @@ APPROVALS_FILE = FIXTURES / "approvals.json"
 
 st.set_page_config(page_title="AutoDiscover · Forkit Passports", page_icon="🛂", layout="wide")
 
-# ── Styling: warm editorial theme (ivory canvas, serif headings, terracotta accent, TUM-blue info) ──
+# ── Styling: enterprise SaaS theme (white canvas, slate ink, one blue accent; pairs with config.toml) ──
 #
 # One status palette for every tab, the sidebar and the provenance map:
 #   PASS / APPROVED / CONFIRMED  green    UNKNOWN        amber
@@ -66,119 +66,100 @@ st.markdown(
     """
 <style>
 :root {
-  --ad-accent:#c96442; --ad-ink:#1a1915; --ad-muted:#6b6862; --ad-line:rgba(26,25,21,0.09);
-  --ad-glass:rgba(255,255,255,0.62); --ad-blue:#3070b3;
-  --ad-serif: 'Tiempos Text', Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
-  --ad-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 0 0 1px rgba(26,25,21,0.06),
-               0 10px 28px -16px rgba(90,50,25,0.28);
+  --ad-ink:#0F172A; --ad-muted:#64748B; --ad-line:#E2E8F0; --ad-soft:#F8FAFC; --ad-blue:#2563EB;
+  --ad-sans: Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --ad-mono: 'JetBrains Mono', Consolas, 'SF Mono', Menlo, ui-monospace, monospace;
 }
-/* Canvas: warm ivory with a faint sunrise glow */
-[data-testid="stApp"] {
-  background:
-    radial-gradient(1100px 480px at 88% -12%, rgba(232,132,92,0.16), transparent 62%),
-    radial-gradient(900px 420px at -5% -8%, rgba(255,207,160,0.22), transparent 60%),
-    #f7f5f0;
-  background-attachment: fixed;
-}
-header[data-testid="stHeader"] { height: 2.25rem; background: transparent; }
-.block-container, [data-testid="stMainBlockContainer"] { padding: 1.2rem 2.75rem 2.5rem 2.75rem; max-width: 1560px; }
-h1, h2, h3 { font-family: var(--ad-serif) !important; font-weight: 400 !important; letter-spacing:-0.012em;
-             color: var(--ad-ink); }
-h3 { margin-top: 0.3rem !important; }
-[data-testid="stCaptionContainer"] { color: var(--ad-muted); }
+/* Standalone app chrome */
+[data-testid="stDeployButton"], .stAppDeployButton, [data-testid="stMainMenu"] { display:none !important; }
+header[data-testid="stHeader"] { height: 2rem; background: transparent; }
+.block-container, [data-testid="stMainBlockContainer"] { padding: 0.9rem 2rem 2.5rem 2rem; max-width: 1600px; }
+h1, h2, h3, h4 { font-family: var(--ad-sans) !important; color: var(--ad-ink); letter-spacing:-0.015em; }
+h3 { font-weight: 650 !important; margin-top: 0.2rem !important; }
+code, .mono { font-family: var(--ad-mono) !important; }
 
-/* Hero */
-.hero { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px 24px;
-        padding:2px 0 14px 0; }
-.hero-title { font-family:var(--ad-serif); font-size:2rem; font-weight:400; color:var(--ad-ink);
-              letter-spacing:-0.02em; line-height:1.1; }
-.hero-sub { font-family:'Segoe UI', Inter, system-ui, sans-serif; font-size:0.98rem; color:var(--ad-muted);
-            margin-left:14px; letter-spacing:0; }
-.pills { display:flex; flex-wrap:wrap; gap:8px; }
-.pill { display:inline-flex; align-items:center; gap:7px; padding:5px 13px; border-radius:999px;
-        font-weight:550; font-size:0.84rem; color:var(--ad-ink); background:var(--ad-glass);
-        backdrop-filter: blur(12px) saturate(1.2); box-shadow:var(--ad-shadow); }
-.pill::before { content:""; width:7px; height:7px; border-radius:50%;
-                background: radial-gradient(circle at 35% 30%, #fff 0 18%, var(--pill-dot) 55%); }
+/* Header */
+.hero { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 24px;
+        padding:0 0 12px 0; }
+.hero-title { font-size:1.6rem; font-weight:700; color:var(--ad-ink); letter-spacing:-0.025em; line-height:1.15; }
+.hero-sub { font-size:0.95rem; font-weight:500; color:var(--ad-muted); margin-left:12px; letter-spacing:0; }
+.pills { display:flex; flex-wrap:wrap; gap:6px; }
+.pill { display:inline-flex; align-items:center; gap:7px; padding:4px 11px; border-radius:6px;
+        font-weight:550; font-size:0.82rem; color:#334155; background:#fff; border:1px solid var(--ad-line); }
+.pill::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--pill-dot); }
 
-/* Tabs */
-.stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom:1px solid var(--ad-line); }
-.stTabs [data-baseweb="tab"] { padding: 10px 14px; border-radius:10px 10px 0 0; }
-.stTabs [data-baseweb="tab"] p { font-size:1rem; font-weight:500; color:var(--ad-muted); }
-.stTabs [data-baseweb="tab"]:hover p { color: var(--ad-ink); }
-.stTabs [aria-selected="true"] p { color: var(--ad-ink); font-weight:600; }
+/* Tabs (Streamlit 1.67 renders react-aria tabs) */
+.stTabs [role="tablist"] { gap: 28px; border-bottom:1px solid var(--ad-line); }
+.stTabs [data-testid="stTab"] { padding: 10px 0; background: transparent; }
+.stTabs [data-testid="stTab"] p { font-size:0.98rem; font-weight:500; color:var(--ad-muted); }
+.stTabs [data-testid="stTab"]:hover p { color: var(--ad-ink); }
+.stTabs [data-testid="stTab"][aria-selected="true"] p { color: var(--ad-ink); font-weight:650; }
+.stTabs .react-aria-SelectionIndicator { background-color: var(--ad-blue) !important; height: 2px !important; }
 
-/* Status badges: soft tints, one meaning per colour */
-.badge { display:inline-block; padding:2px 9px; border-radius:7px; font-weight:600;
-         font-family:'Segoe UI', Inter, system-ui, sans-serif; vertical-align:middle;
-         font-size:0.8rem; margin:2px 4px 2px 0; letter-spacing:0.01em; line-height:1.45; }
-.b-ok       { background:#e4f1e7; color:#1f6b3a; }
-.b-unknown  { background:#fbefcf; color:#7a5300; }
-.b-bad      { background:#fbe1df; color:#a3221d; }
-.b-warn     { background:#fde4d2; color:#9a4512; }
-.b-slate    { background:#e9ebee; color:#46505e; }
-.b-neutral  { background:#ece8df; color:#55524b; }
-.b-redacted { background:#e3ecf6; color:#24578f; }
+/* Matte status pills: one meaning per colour */
+.badge { display:inline-block; padding:1px 8px; border-radius:5px; font-weight:600; font-family:var(--ad-sans);
+         font-size:0.78rem; margin:2px 4px 2px 0; letter-spacing:0.01em; line-height:1.55; vertical-align:middle;
+         border:1px solid transparent; }
+.b-ok       { background:#ECFDF5; color:#047857; border-color:#A7F3D0; }
+.b-unknown  { background:#FFFBEB; color:#B45309; border-color:#FDE68A; }
+.b-bad      { background:#FFF1F2; color:#BE123C; border-color:#FECDD3; }
+.b-warn     { background:#FFF7ED; color:#C2410C; border-color:#FED7AA; }
+.b-slate, .b-neutral { background:#F1F5F9; color:#475569; border-color:#CBD5E1; }
+.b-redacted { background:#EFF6FF; color:#1D4ED8; border-color:#BFDBFE; }
 
-/* Glass cards */
-.card { border-radius:16px; padding:16px 20px; margin-bottom:14px; background:var(--ad-glass);
-        backdrop-filter: blur(16px) saturate(1.2); box-shadow:var(--ad-shadow);
-        transition: box-shadow .2s ease, transform .2s ease; }
-.card:hover { box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), 0 0 0 1px rgba(26,25,21,0.08),
-                          0 16px 36px -18px rgba(90,50,25,0.35); }
-.card h4 { margin:0 0 8px 0; font-family:var(--ad-serif); font-size:1.2rem; font-weight:400; color:var(--ad-ink); }
-.card.merge-warn { box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 0 0 1.5px rgba(222,128,64,0.55),
-                               0 12px 30px -16px rgba(222,128,64,0.45); background:rgba(255,248,241,0.72); }
-.card.drift      { box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 0 0 1.5px rgba(222,128,64,0.55),
-                               0 12px 30px -16px rgba(222,128,64,0.45); background:rgba(255,248,241,0.72); }
-.card.incident   { box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 0 0 2px rgba(200,40,35,0.6),
-                               0 14px 34px -14px rgba(200,40,35,0.45); background:rgba(255,242,240,0.8); }
-.card.incident h4 { color:#a3221d; }
-.card.audit      { box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 0 0 1.5px rgba(48,112,179,0.35),
-                               0 12px 30px -16px rgba(48,112,179,0.35); background:rgba(246,249,253,0.75); }
+/* Cards */
+.card { border:1px solid var(--ad-line); border-radius:10px; padding:16px 18px; margin-bottom:12px; background:#fff; }
+.card h4, .card-body h4 { margin:0 0 8px 0; font-size:1.05rem; font-weight:650; color:var(--ad-ink); }
+.card.drift    { border-color:#FDBA74; }
+.card.incident { border-color:#FDA4AF; background:#FFFBFB; }
+.card.incident h4 { color:#BE123C; }
+.card.audit    { border-color:#BFDBFE; }
 .muted { color:var(--ad-muted); }
-.mono { font-family: Consolas, 'SF Mono', Menlo, ui-monospace, monospace; font-size:0.85rem; color:#2b2a26; }
-.kv { margin:4px 0; }
-.kv b { display:inline-block; min-width:155px; color:var(--ad-muted); font-weight:500; }
-.diff-del { color:#a3221d; } .diff-add { color:#1f6b3a; }
+.mono { font-size:0.84rem; color:#1E293B; }
+.kv { display:flex; flex-wrap:nowrap; align-items:baseline; column-gap:6px; margin:3px 0; }
+.kv > b { flex:0 0 140px; color:var(--ad-muted); font-weight:500; font-size:0.9rem; }
+.kv > :not(b) { min-width:0; }
+.kv .mono { word-break: break-all; }
+.diff-del { color:#BE123C; } .diff-add { color:#047857; }
 
-/* Buttons: glossy primary, glass secondary */
-.stButton button, .stDownloadButton button { font-weight:550; border-radius:11px;
-    transition: box-shadow .15s ease, transform .06s ease, filter .15s ease; }
-.stButton button[kind="primary"], .stDownloadButton button[kind="primary"] {
-    background: linear-gradient(180deg, #db7a52 0%, #c4603d 100%); border: none;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 6px 16px -8px rgba(196,96,61,0.7); }
-.stButton button[kind="primary"]:hover, .stDownloadButton button[kind="primary"]:hover { filter: brightness(1.05); }
-.stButton button[kind="secondary"], .stDownloadButton button[kind="secondary"] {
-    background: rgba(255,255,255,0.7); border: none; box-shadow: var(--ad-shadow); }
-.stButton button:active, .stDownloadButton button:active { transform: translateY(1px); }
+/* Tab 2: equal-height identity cards with the action on one baseline */
+[data-testid="stHorizontalBlock"]:has(.card-body) { align-items: stretch; }
+[data-testid="stHorizontalBlock"]:has(.card-body) > [data-testid="stColumn"] > div,
+[data-testid="stHorizontalBlock"]:has(.card-body) > [data-testid="stColumn"] [data-testid="stVerticalBlock"] { height:100%; }
+[class*="st-key-idcard_"] { background:#fff; border-radius:10px !important; }
+[class*="st-key-idcard_"] > div:has(.card-body) { flex: 1 1 auto; }
+[class*="st-key-idcard_collision_"] { border-color:#FDBA74 !important; }
 
-/* Alerts and expanders follow the glass language */
-[data-testid="stAlert"] > div { border-radius:14px; }
-[data-testid="stExpander"] details { border-radius:14px; background:var(--ad-glass); border:none; box-shadow:var(--ad-shadow); }
+/* Tab 5: diagrams framed like every other card */
+[class*="st-key-graphframe_"] { background:#fff; border-radius:10px !important; }
+
+/* Buttons: flat, matte */
+.stButton button, .stDownloadButton button { font-weight:600; border-radius:8px; box-shadow:none; }
+.stButton button[kind="primary"], .stDownloadButton button[kind="primary"] { background:#0F172A; border:1px solid #0F172A; color:#fff; }
+.stButton button[kind="primary"]:hover, .stDownloadButton button[kind="primary"]:hover { background:#1E293B; border-color:#1E293B; }
+.stButton button[kind="secondary"], .stDownloadButton button[kind="secondary"] { background:#fff; border:1px solid #CBD5E1; color:var(--ad-ink); }
+.stButton button[kind="secondary"]:hover, .stDownloadButton button[kind="secondary"]:hover { border-color:#94A3B8; background:var(--ad-soft); }
+[data-testid="stAlert"] > div { border-radius:8px; }
+[data-testid="stExpander"] details { border-radius:8px; }
 
 /* Sidebar */
-section[data-testid="stSidebar"] { background: rgba(241,237,229,0.78); backdrop-filter: blur(18px); }
 [data-testid="stSidebarUserContent"] { padding-top: 0.25rem; }
-[data-testid="stSidebarHeader"] { height: 2.25rem; padding-top: 0.75rem; padding-bottom: 0; }
+[data-testid="stSidebarHeader"] { height: 2rem; padding-top: 0.6rem; padding-bottom: 0; }
 section[data-testid="stSidebar"] hr { margin: 0.8rem 0 !important; border-color: var(--ad-line); }
-.sb-brand { display:flex; align-items:center; gap:10px; font-family:var(--ad-serif); font-size:1.5rem;
-            font-weight:400; color:var(--ad-ink); line-height:1.2; }
-.orb { width:22px; height:22px; border-radius:50%; flex:none;
-       background: radial-gradient(circle at 32% 28%, #fff6ee 0 14%, #f2a27c 38%, #c96442 70%, #9c4428 100%);
-       box-shadow: inset 0 -2px 4px rgba(120,40,15,0.35), 0 3px 8px -2px rgba(201,100,66,0.6); }
-.sb-tag { color:var(--ad-muted); font-size:0.82rem; margin-top:4px; }
-.sb-section { font-size:0.8rem; font-weight:600; color:var(--ad-ink); margin:2px 0 8px 0; }
-.tiles { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:10px; }
-.tile { background:var(--ad-glass); backdrop-filter: blur(12px); border-radius:12px; padding:8px 6px;
-        text-align:center; box-shadow:var(--ad-shadow); }
-.tile .n { font-family:var(--ad-serif); font-size:1.7rem; font-weight:400; color:var(--ad-ink); line-height:1.1; }
-.tile .l { font-size:0.7rem; color:var(--ad-muted); font-weight:500; line-height:1.25; margin-top:2px; }
-.tile.alert { background:rgba(255,238,235,0.85);
-              box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 0 0 1.5px rgba(200,40,35,0.45); }
-.tile.alert .n { color:#a3221d; }
-.sb-status { font-size:0.86rem; margin:3px 0; }
-.sb-status b { display:inline-block; min-width:92px; color:var(--ad-muted); font-weight:500; }
+.sb-brand { display:flex; align-items:center; gap:9px; font-size:1.2rem; font-weight:700; color:var(--ad-ink);
+            letter-spacing:-0.02em; }
+.mark { width:22px; height:22px; border-radius:6px; background:var(--ad-ink); color:#fff; font-size:0.72rem;
+        font-weight:700; display:inline-flex; align-items:center; justify-content:center; letter-spacing:0; }
+.sb-tag { color:var(--ad-muted); font-size:0.8rem; margin-top:4px; }
+.sb-section { font-size:0.72rem; font-weight:650; letter-spacing:0.06em; text-transform:uppercase;
+              color:var(--ad-muted); margin:2px 0 8px 0; }
+.metrics { background:#fff; border:1px solid var(--ad-line); border-radius:8px; margin-bottom:10px; }
+.mrow { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; font-size:0.92rem;
+        color:#334155; }
+.mrow + .mrow { border-top:1px solid var(--ad-line); }
+.mrow b { font-size:1.15rem; font-weight:700; color:var(--ad-ink); font-variant-numeric: tabular-nums; }
+.mrow.alert b { color:#BE123C; }
+.mrow .badge { margin:0; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -210,11 +191,11 @@ def sidebar_section(title: str) -> None:
 
 
 DEMO_HINTS = {
-    1: "Click **Scan**, point at the [REDACTED] card and the disk check, then open ②.",
-    2: "Point at the SAME NAME and UNKNOWN badges, mint all three, then click **🔄 Simulate Restart** in the sidebar.",
-    3: "Toggle **📝 Load v2 Config Update** in the sidebar, show the diff and why access mode is UNKNOWN, then open ④.",
+    1: "Click **Scan**, point at the [REDACTED] card and the disk check, then open **02 Identity & Review**.",
+    2: "Point at the SAME NAME and UNKNOWN badges, mint all three, then click **Simulate Restart** in the sidebar.",
+    3: "Toggle **Load v2 Config Update** in the sidebar, show the diff and why access mode is UNKNOWN, then open **04 Linking & Incidents**.",
     4: "Pick evt-0002 and click Link without consent (blocked), then tick consent and link (MISSING_APPROVAL + INCIDENT). "
-       "Finish with evt-0003 on the filesystem-mcp passport (blocked), then open ⑤.",
+       "Finish with evt-0003 on the filesystem-mcp passport (blocked), then open **05 Provenance Map**.",
     5: "Close the demo here: walk config → provenance hash → passport → events/incidents, all joined by passport_id.",
 }
 
@@ -323,14 +304,14 @@ eng = engine()
 # ── Sidebar: demo superpowers ──────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown('<div class="sb-brand"><span class="orb"></span>AutoDiscover</div>'
+    st.markdown('<div class="sb-brand"><span class="mark">AD</span>AutoDiscover</div>'
                 '<div class="sb-tag">Built on Forkit Core '
                 '<span class="mono">compute_id</span></div>', unsafe_allow_html=True)
     st.divider()
 
     # ── Section 1: Discovery Mode ──
     sidebar_section("Discovery Mode")
-    mode_labels = {"demo": "🎭 Demo fixtures (default)", "real": "💻 Scan Real Local Machine"}
+    mode_labels = {"demo": "Demo fixtures (default)", "real": "Scan Real Local Machine"}
     picked = st.radio("Discovery mode", list(mode_labels), format_func=mode_labels.get,
                       index=list(mode_labels).index(st.session_state.mode), label_visibility="collapsed")
     if picked != st.session_state.mode:
@@ -352,14 +333,14 @@ with st.sidebar:
     st.divider()
     sidebar_section("Demo Controls")
     if real_mode():
-        if st.button("🧹 Clear Local Scan Registry", width="stretch", type="primary"):
+        if st.button("Clear Local Scan Registry", width="stretch", type="primary"):
             for f in LOCAL_DATA.glob("*.json"):
                 f.unlink()
             st.session_state.clear()
             st.session_state.mode = "real"
             st.session_state.flash = ("success", "Local scan registry in `data/local/` cleared.")
             st.rerun()
-    elif st.button("🧹 1-Click Reset Demo State", width="stretch", type="primary"):
+    elif st.button("1-Click Reset Demo State", width="stretch", type="primary"):
         for f in DATA.glob("*.json"):
             f.unlink()
         shutil.rmtree(LIVE, ignore_errors=True)
@@ -368,7 +349,7 @@ with st.sidebar:
         st.session_state.flash = ("success", "Demo reset: registry, links, incidents and changes cleared.")
         st.rerun()
 
-    if st.button("🔄 Simulate Restart", width="stretch"):
+    if st.button("Simulate Restart", width="stretch"):
         before = {c["passport_id"] for c in st.session_state.candidates}
         v2 = st.session_state.v2_active
         mode = st.session_state.mode
@@ -390,7 +371,7 @@ with st.sidebar:
         st.rerun()
 
     v2_toggle = False if real_mode() else st.toggle(
-        "📝 Load v2 Config Update",
+        "Load v2 Config Update",
         value=st.session_state.v2_active,
         help="Simulates editing claude_desktop_config.json in place with the v2 contents.",
     )
@@ -406,12 +387,12 @@ with st.sidebar:
             st.session_state.flash = (
                 "warning",
                 "v2 config loaded, but filesystem-mcp has no passport yet, so there is nothing to diff against. "
-                "For the demo: turn v2 off, mint filesystem-mcp in ②, then turn v2 on again.",
+                "For the demo: turn v2 off, mint filesystem-mcp in **02 Identity & Review**, then turn v2 on again.",
             )
         else:
             st.session_state.flash = (
                 "warning" if v2_toggle else "info",
-                "v2 config loaded: filesystem-mcp args changed on disk. See ③."
+                "v2 config loaded: filesystem-mcp args changed on disk. See **03 Drift & Governance**."
                 if v2_toggle else "Reverted to the original v1 config.",
             )
         st.rerun()
@@ -426,14 +407,6 @@ with st.sidebar:
     sidebar_section("Live Governance Metrics & Audit Export")
     passports = eng.passports()
     n_incidents = len(eng.incidents())
-    st.markdown(
-        '<div class="tiles">'
-        f'<div class="tile"><div class="n">{len(passports)}</div><div class="l">Confirmed passports</div></div>'
-        f'<div class="tile"><div class="n">{len(eng.linked_events())}</div><div class="l">Linked events</div></div>'
-        f'<div class="tile{" alert" if n_incidents else ""}"><div class="n">{n_incidents}</div>'
-        '<div class="l">Incidents</div></div></div>',
-        unsafe_allow_html=True,
-    )
     audit = eng.build_audit_report(
         candidates=st.session_state.candidates,
         raw_secret_values=raw_secret_values(),
@@ -441,10 +414,15 @@ with st.sidebar:
     )
     integ, scan = audit["integrity"], audit["secret_scan"]
     st.markdown(
-        f'<div class="sb-status"><b>Integrity</b>{status_badge(integ["status"])}'
-        f'<span class="muted">{integ["passports_checked"]} passports</span></div>'
-        f'<div class="sb-status"><b>Secret scan</b>{status_badge(scan["status"])}'
-        f'<span class="muted">{len(scan["files_scanned"])} files</span></div>',
+        '<div class="metrics">'
+        f'<div class="mrow"><span>Confirmed passports</span><b>{len(passports)}</b></div>'
+        f'<div class="mrow"><span>Linked events</span><b>{len(eng.linked_events())}</b></div>'
+        f'<div class="mrow{" alert" if n_incidents else ""}"><span>Incidents</span><b>{n_incidents}</b></div>'
+        '</div><div class="metrics">'
+        f'<div class="mrow"><span>Integrity · {integ["passports_checked"]} passports</span>'
+        f'{status_badge(integ["status"])}</div>'
+        f'<div class="mrow"><span>Secret scan · {len(scan["files_scanned"])} files</span>'
+        f'{status_badge(scan["status"])}</div></div>',
         unsafe_allow_html=True,
     )
     st.caption("Source of truth: `data/local/passports.json`" if real_mode()
@@ -454,9 +432,9 @@ with st.sidebar:
     try:
         bundle = build_audit_bundle(audit, eng.data_dir, inputs=[APPROVALS_FILE, eng.policies_path])
     except PermissionError as exc:
-        st.error(f"🚫 {exc}. Fix the leak, then the download returns.")
+        st.error(f"{exc}. Fix the leak, then the download returns.")
     else:
-        st.download_button("📦 Download Governance Audit Report", bundle, file_name=f"{base}.zip",
+        st.download_button("Download Governance Audit Report", bundle, file_name=f"{base}.zip",
                            mime="application/zip", width="stretch", type="primary")
         c_json, c_md = st.columns(2)
         c_json.download_button("JSON", json.dumps(audit, indent=2, sort_keys=True), file_name=f"{base}.json",
@@ -466,8 +444,8 @@ with st.sidebar:
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 
-PRINCIPLES = [("Metadata-only", "#3070b3"), ("Unknown stays UNKNOWN", "#d9a93a"),
-              ("No false merges", "#ea9450"), ("Consent-gated linking", "#2f9e5a")]
+PRINCIPLES = [("Metadata-only", "#2563EB"), ("Unknown stays UNKNOWN", "#D97706"),
+              ("No false merges", "#EA580C"), ("Consent-gated linking", "#059669")]
 st.markdown(
     '<div class="hero"><div class="hero-title">AutoDiscover<span class="hero-sub">Zero-touch AI onboarding '
     '&amp; passports</span></div><div class="pills">'
@@ -484,36 +462,36 @@ if st.session_state.flash:
 proof = st.session_state.restart_proof
 if proof and proof["registry_count"] == 0:
     st.info("Restart simulated, but the registry is empty so there is nothing to recognize yet. "
-            "Scan in ①, mint in ②, then click **🔄 Simulate Restart** again.")
+            "Scan in **01 Discover**, mint in **02 Identity & Review**, then click **Simulate Restart** again.")
 elif proof:
     same = proof["after"] == proof["recognized"] and (not proof["before"] or proof["before"] == proof["after"])
     keys = [(p["source_path"], p["tool_name"]) for p in eng.passports().values()]
     dupes = len(keys) - len(set(keys))
     if same and dupes == 0:
         st.success(
-            f"✅ RESTART RECOGNIZED: in-memory state wiped, re-scan matched "
+            f"RESTART RECOGNIZED: in-memory state wiped, re-scan matched "
             f"{len(proof['recognized'])}/{len(proof['after'])} tools to existing passports. "
             f"Same passport_ids, {proof['registry_count']} passports in registry, 0 duplicates."
         )
     else:
         st.warning(
             f"Restart re-scan: {len(proof['recognized'])}/{len(proof['after'])} tools already have passports "
-            f"({dupes} duplicates). Mint the rest in ② to see them recognized next time."
+            f"({dupes} duplicates). Mint the rest in **02 Identity & Review** to see them recognized next time."
         )
     with st.expander("Passport IDs before vs. after restart"):
         st.json({"before_restart": proof["before"], "after_restart": proof["after"]})
 
 # Keyed, stateful tabs: clicking a button inside a tab keeps you on that tab.
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["① Discover", "② Identity & Honesty Review", "③ Metadata Diff & Governance", "④ Consented Linking & Incidents",
-     "⑤ Provenance Map"],
+    ["01 Discover", "02 Identity & Review", "03 Drift & Governance", "04 Linking & Incidents",
+     "05 Provenance Map"],
     key="active_tab",
     on_change="rerun",
 )
 
 candidates: list[dict[str, Any]] = st.session_state.candidates
 
-# ── ① Discover ─────────────────────────────────────────────────────────────────
+# ── 01 Discover ───────────────────────────────────────────────────────────────
 
 with tab1:
     st.subheader("Step 1 · Local Discovery (Metadata-Only)")
@@ -521,10 +499,10 @@ with tab1:
     if real_mode():
         st.caption("Read-only scan of the well-known Claude Desktop, Cursor and VS Code MCP config locations "
                    "on this computer. Nothing is written to those files.")
-        scan_label = "💻 Scan Real Local Machine"
+        scan_label = "Scan Real Local Machine"
     else:
         st.caption("Scans local MCP configs: " + ", ".join(f"`{c}`" for c in CONFIGS))
-        scan_label = "🔍 Scan Local MCP Configs"
+        scan_label = "Scan Local MCP Configs"
     if st.button(scan_label, type="primary"):
         run_discovery()
         st.session_state.restart_proof = None
@@ -558,14 +536,21 @@ with tab1:
             "access_mode": c["access_mode"],
             "config_hash": c["config_hash"][:12] + "…",
         } for c in candidates]
-        st.dataframe(rows, width="stretch", hide_index=True)
+        col = st.column_config.TextColumn
+        st.dataframe(rows, width="stretch", hide_index=True, column_config={
+            "tool_name": col("tool_name", width=125), "client": col("client", width=125),
+            "source_path": col("source_path", width=268), "command": col("command", width=80),
+            "args": col("args", width=280, help="Full args (secrets redacted); hover a cell to read it all"),
+            "env": col("env", width=180), "owner": col("owner", width=95), "version": col("version", width=90),
+            "access_mode": col("access_mode", width=110), "config_hash": col("config_hash", width=120),
+        })
 
         redacted = [(c, k) for c in candidates for k, v in c["env"].items() if v == REDACTED]
         if redacted:
             items = "".join(
-                f'<div class="kv"><b>{html.escape(c["tool_name"])}</b>'
+                f'<div class="kv"><b>{html.escape(c["tool_name"])}</b><span>'
                 f'<span class="mono">{html.escape(k)}: </span>{badge("[REDACTED]", "redacted")}'
-                f' <span class="mono">({html.escape(c["client"])})</span></div>'
+                f' <span class="mono">({html.escape(c["client"])})</span></span></div>'
                 for c, k in redacted
             )
             st.markdown(
@@ -581,7 +566,7 @@ with tab1:
             store = "data/local/*.json" if real_mode() else "data/*.json"
             st.success(f"Disk check: 0 of {len(raw_secret_values())} raw secret values appear anywhere in `{store}`.")
 
-# ── ② Identity & Honesty Review ────────────────────────────────────────────────
+# ── 02 Identity & Review ──────────────────────────────────────────────────────
 
 with tab2:
     st.subheader("Step 2 · Identity & Honesty Review")
@@ -600,12 +585,15 @@ with tab2:
         if st.session_state.v2_active and any(
             c["source_path"] == CLAUDE and c["passport_id"] not in passports for c in candidates
         ):
-            st.warning("You are on the edited **v2** config. Minting now records v2 as the baseline, so ③ will "
+            st.warning("You are on the edited **v2** config. Minting now records v2 as the baseline, so **03 Drift & Governance** will "
                        "have no diff to show. For the demo, turn v2 off in the sidebar first and mint on v1.")
 
         cols = st.columns(len(candidates))
         for col, c in zip(cols, candidates, strict=True):
-            with col:
+            with col, st.container(
+                border=True, height="stretch",
+                key=f"idcard_{'collision_' if len(name_sources[c['tool_name']]) > 1 else ''}{c['passport_id'][:16]}",
+            ):
                 collision = len(name_sources[c["tool_name"]]) > 1
                 minted = c["passport_id"] in passports
                 status = badge("CONFIRMED", "ok") if minted else badge("CANDIDATE", "neutral")
@@ -615,7 +603,7 @@ with tab2:
                 )
                 changed = badge("METADATA CHANGED", "bad") if c.get("metadata_changed") else ""
                 st.markdown(
-                    f'<div class="card {"merge-warn" if collision else ""}">'
+                    f'<div class="card-body">'
                     f'<h4>{html.escape(c["tool_name"])}</h4>{status}{changed}{warn}'
                     f'<div style="margin:4px 0">{rule_badges(c.get("policy_findings", []))}</div>'
                     f'<div class="kv"><b>client</b>{value_badge(c["client"])}</div>'
@@ -629,10 +617,11 @@ with tab2:
                     f'</div>',
                     unsafe_allow_html=True,
                 )
+                st.space("stretch")                     # pushes the action to one shared baseline
                 if minted:
-                    st.button("✅ Passport minted", key=f"mint_{c['passport_id']}", disabled=True,
+                    st.button("Passport minted", key=f"mint_{c['passport_id']}", disabled=True,
                               width="stretch")
-                elif st.button("🪪 Single-Click Mint Stable ID", key=f"mint_{c['passport_id']}",
+                elif st.button("Single-Click Mint Stable ID", key=f"mint_{c['passport_id']}",
                                type="primary", width="stretch"):
                     pid = eng.mint_passport(c)
                     refresh_policies()
@@ -648,7 +637,7 @@ with tab2:
                 + ". Same name, different provenance, so they get different passport IDs."
             )
 
-# ── ③ Metadata Diff & Governance ───────────────────────────────────────────────
+# ── 03 Drift & Governance ─────────────────────────────────────────────────────
 
 with tab3:
     st.subheader("Step 3 · Metadata Diff & Governance Alerts")
@@ -656,12 +645,12 @@ with tab3:
     changed = [c for c in candidates if c.get("metadata_changed")]
     if real_mode():
         if not changed:
-            st.info("No config drift on confirmed passports. To see it, mint a tool in ②, edit that tool's "
-                    "args in your MCP config, then re-scan in ①.")
+            st.info("No config drift on confirmed passports. To see it, mint a tool in **02 Identity & Review**, edit that tool's "
+                    "args in your MCP config, then re-scan in **01 Discover**.")
     elif not st.session_state.scanned:
-        st.info("Run discovery in ① and mint `filesystem-mcp` in ② first.")
+        st.info("Run discovery in **01 Discover** and mint `filesystem-mcp` in **02 Identity & Review** first.")
     elif not st.session_state.v2_active:
-        st.info("Toggle **📝 Load v2 Config Update** in the sidebar to simulate an in-place config edit.")
+        st.info("Toggle **Load v2 Config Update** in the sidebar to simulate an in-place config edit.")
     elif not changed:
         st.info("v2 is loaded, but no confirmed passport changed. Mint `filesystem-mcp` in Step 2 first, "
                 "then toggle v2 off and on again.")
@@ -700,7 +689,7 @@ with tab3:
                "missing facts are never guessed.")
     findings = eng.policy_findings()
     if not findings:
-        st.info("No findings yet. Scan in ① to evaluate the rules.")
+        st.info("No findings yet. Scan in **01 Discover** to evaluate the rules.")
     else:
         order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         counts = {sev: sum(f["severity"] == sev for f in findings) for sev in order}
@@ -717,7 +706,7 @@ with tab3:
                 unsafe_allow_html=True,
             )
 
-# ── ④ Consented Linking & Incidents ────────────────────────────────────────────
+# ── 04 Linking & Incidents ────────────────────────────────────────────────────
 
 with tab4:
     st.subheader("Step 4 · Consented Event Linking & Incident Log")
@@ -726,9 +715,9 @@ with tab4:
     passports = eng.passports()
     if real_mode():
         st.info("Event linking runs on the demo's runtime event fixtures, whose sources point at the fixture "
-                "configs. Switch to **🎭 Demo fixtures** in the sidebar to link events.")
+                "configs. Switch to **Demo fixtures** in the sidebar to link events.")
     elif not passports:
-        st.info("No passports yet. Scan in ① and mint at least `filesystem-mcp` in ② before linking events.")
+        st.info("No passports yet. Scan in **01 Discover** and mint at least `filesystem-mcp` in **02 Identity & Review** before linking events.")
     else:
         left, right = st.columns([1, 1])
         with left:
@@ -750,14 +739,14 @@ with tab4:
             if match is None:
                 st.warning(
                     f"The passport for this event's source (`{event['source']['server_name']}` @ "
-                    f"`{event['source']['config_path']}`) is not minted yet. Mint it in ② to link this event. "
+                    f"`{event['source']['config_path']}`) is not minted yet. Mint it in **02 Identity & Review** to link this event. "
                     "Linking to another passport will be blocked as a source mismatch."
                 )
                 match = pids[0]
             target = st.selectbox("Target passport_id", pids, index=pids.index(match),
                                   format_func=labels.get, key=f"target_{ev_id}")
             consent = st.checkbox("I grant explicit consent to link this event", key=f"consent_{ev_id}")
-            if st.button("🔗 Link Event", type="primary", width="stretch"):
+            if st.button("Link Event", type="primary", width="stretch"):
                 try:
                     st.session_state.last_link = eng.link_event(event, target, user_consent=consent)
                     refresh_policies()
@@ -769,7 +758,7 @@ with tab4:
                 st.rerun()
 
         if st.session_state.last_error:
-            st.error(f"🚫 Link blocked by engine. {st.session_state.last_error}")
+            st.error(f"Link blocked by engine. {st.session_state.last_error}")
 
         link = st.session_state.last_link
         if link:
@@ -825,7 +814,7 @@ with tab4:
                 "timestamp": i["timestamp"], "result": i["result"],
             } for i in eng.incidents()], width="stretch", hide_index=True)
 
-# ── ⑤ Provenance Map ───────────────────────────────────────────────────────────
+# ── 05 Provenance Map ─────────────────────────────────────────────────────────
 
 with tab5:
     st.subheader("Step 5 · Visual Provenance & Lifecycle Flow")
@@ -833,7 +822,8 @@ with tab5:
     store = eng.data_dir                              # data/ (demo) or data/local/ (real machine), read-only
     st.markdown("**How identity flows**: from client config to a stable passport. Approvals, drift, events, "
                 "incidents and policy findings attach by `passport_id` and never mutate the passport.")
-    st.graphviz_chart(lifecycle_dot(store), width="stretch")
+    with st.container(border=True, key="graphframe_lifecycle"):
+        st.graphviz_chart(lifecycle_dot(store), width="stretch")
 
     st.markdown("**Live provenance map**")
     map_passports = eng.passports()
@@ -845,10 +835,11 @@ with tab5:
     )
     dot = live_map_dot(store, candidates=st.session_state.candidates, focus=focus)
     if dot is None:
-        st.info("Nothing to map yet. Scan in ① (and mint in ②) and the live map of configs, passports, "
+        st.info("Nothing to map yet. Scan in **01 Discover** (and mint in **02 Identity & Review**) and the live map of configs, passports, "
                 "events and incidents appears here.")
     else:
-        st.graphviz_chart(dot, width="stretch")
+        with st.container(border=True, key="graphframe_live"):
+            st.graphviz_chart(dot, width="stretch")
         st.caption("Solid box = confirmed passport (integrity re-derived from provenance) · dashed = candidate "
                    "not minted yet · red = MISSING_APPROVAL / incident · orange = drift or same-name tools "
                    "kept apart.")
