@@ -85,7 +85,7 @@ def claude_config(home: Path) -> dict:
 def test_platform_paths_resolve_under_injected_home(tmp_path: Path, platform: str, expected: dict) -> None:
     home, env = fake_machine(tmp_path, platform)
     locs = {loc["client"]: loc for loc in known_config_locations(platform, home, env)}
-    assert set(locs) == set(expected)
+    assert set(expected) <= set(locs)
     for client, (label, parts) in expected.items():
         assert locs[client]["label"] == label
         assert locs[client]["path"] == home.joinpath(*parts)
@@ -96,7 +96,10 @@ def test_windows_without_appdata_is_unresolved_not_a_crash(tmp_path: Path) -> No
     home, _ = fake_machine(tmp_path, "linux")
     summary = scan_local_machine("win32", home, env={})
     status = {r["client"]: r["status"] for r in summary["locations"]}
-    assert status == {"claude-desktop": "unresolved", "cursor": "missing", "vscode": "unresolved"}
+    assert {k: status[k] for k in ("claude-desktop", "cursor", "vscode")} == {
+        "claude-desktop": "unresolved", "cursor": "missing", "vscode": "unresolved"}
+    assert status["vscode-insiders"] == "unresolved"
+    assert status["claude-code"] == "missing"
 
 
 # ── Scanning ───────────────────────────────────────────────────────────────────
@@ -161,14 +164,14 @@ def test_corrupt_and_unreadable_files_are_reported_not_raised(tmp_path: Path, mo
     write(locs["vscode"], {"servers": {"ok": {"command": "npx"}}})
 
     # Simulate an OS-level read failure (e.g. permissions) identically on every OS.
-    real_read = Path.read_text
+    real_open = Path.open
 
     def flaky(self: Path, *a, **kw):
         if self == locs["vscode"]:
             raise PermissionError(13, "Permission denied", str(self))
-        return real_read(self, *a, **kw)
+        return real_open(self, *a, **kw)
 
-    monkeypatch.setattr(Path, "read_text", flaky)
+    monkeypatch.setattr(Path, "open", flaky)
     summary = scan_local_machine("linux", home, env)
     status = {r["client"]: r for r in summary["locations"]}
     assert status["claude-desktop"]["status"] == "invalid_json"

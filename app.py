@@ -41,6 +41,7 @@ from src.engine import (
     known_config_locations,
     raw_secret_values_from_configs,
     render_audit_markdown,
+    workspace_config_locations,
 )
 from src.live_map_html import lifecycle_html, live_map_html
 
@@ -378,7 +379,8 @@ def engine() -> AutoDiscoverEngine:
 
 def run_discovery() -> None:
     if real_mode():
-        summary = engine().scan_local_machine()     # read-only; never raises for a bad file
+        # read-only; never raises for a bad file
+        summary = engine().scan_local_machine(workspaces=workspace_dirs())
         # Sidecar only: the machine name never enters passport_id inputs, and owner stays UNKNOWN.
         record_discovery(engine().data_dir, [c["passport_id"] for c in summary["candidates"]], machine_name())
         st.session_state.scan_summary = summary
@@ -418,9 +420,17 @@ def load_events() -> list[dict[str, Any]]:
     return [json.loads(line) for line in EVENTS_FILE.read_text().splitlines() if line.strip()]
 
 
+def workspace_dirs() -> list[Path]:
+    """Project folders the user typed in (one per line); only existing folders are scanned."""
+    raw = st.session_state.get("workspace_input", "")
+    return [Path(line.strip()).expanduser() for line in raw.splitlines()
+            if line.strip() and Path(line.strip()).expanduser().is_dir()]
+
+
 def scanned_config_paths() -> list[Path]:
     if real_mode():
-        return [loc["path"] for loc in known_config_locations() if loc["path"] is not None]
+        locs = known_config_locations() + workspace_config_locations(workspace_dirs())
+        return [loc["path"] for loc in locs if loc["path"] is not None]
     if agents_mode():
         return agent_config_paths()
     return [LIVE / cfg for cfg in CONFIGS]
@@ -718,8 +728,13 @@ with tab1:
     tab_purpose(1)
     demo_hint(1)
     if real_mode():
-        st.caption("Read-only scan of the well-known Claude Desktop, Cursor and VS Code MCP config locations "
-                   "on this computer. Nothing is written to those files.")
+        st.caption("Read-only scan of the well-known MCP config locations on this computer: Claude Desktop, "
+                   "Claude Code, Cursor, VS Code (and Insiders, with profiles), Windsurf and Codex. "
+                   "Nothing is written to those files.")
+        st.text_area("Project folders to scan too (optional, one per line)", key="workspace_input",
+                     placeholder="~/code/my-project",
+                     help="Looks for .vscode/mcp.json, .cursor/mcp.json, .mcp.json and .codex/config.toml. "
+                          "Only the folder name is stored, never the full path.")
         scan_label = "Scan Real Local Machine"
     elif agents_mode():
         st.caption("Scans the configs the agents ran with: "
@@ -760,12 +775,15 @@ with tab1:
             "discovered_on": "Demo fixtures" if demo_mode() else discovered_on_label(eng.data_dir, c["passport_id"], demo=False),
             "version": c["version"],
             "access_mode": c["access_mode"],
+            "transport": c.get("transport", UNKNOWN),
+            "enabled": {True: "yes", False: "no"}.get(c.get("enabled"), UNKNOWN),
         } for c in candidates], width="stretch", hide_index=True, column_config={
             "tool_name": col("Tool"), "client": col("Client"), "source_path": col("Config file", width="large"),
             "command": col("Command"), "owner": col("Owner"),
             "discovered_on": col("Discovered on",
                                  help="Machine the scan ran on. Context only: not the owner, never part of the passport ID."),
             "version": col("Version"), "access_mode": col("Access"),
+            "transport": col("Transport"), "enabled": col("Enabled", help="UNKNOWN unless the config says so."),
         })
         with st.expander("Arguments, environment and settings fingerprint"):
             st.dataframe([{

@@ -61,6 +61,7 @@ __all__ = [
     "derive_passport_id",
     "known_config_locations",
     "scan_local_machine",
+    "workspace_config_locations",
     "load_policies",
     "category_evidence",
     "evaluate_policies",
@@ -193,6 +194,34 @@ def derive_passport_id(source_path: str, tool_name: str, command: str) -> str:
     )
 
 
+_TRANSPORTS = {"stdio", "http", "sse", "streamable-http", "streamablehttp", "ws", "websocket"}
+
+
+def _transport(spec: dict[str, Any]) -> str:
+    """Observed transport: declared ``type``/``transport``, else inferred from
+    ``command`` (stdio) or ``url`` (http). Neither -> UNKNOWN."""
+    for key in ("type", "transport"):
+        val = spec.get(key)
+        if isinstance(val, str) and val.lower() in _TRANSPORTS:
+            return val.lower()
+    has_cmd = isinstance(spec.get("command"), str) and bool(spec["command"])
+    has_url = isinstance(spec.get("url") or spec.get("serverUrl"), str)
+    if has_cmd and not has_url:
+        return "stdio"
+    if has_url and not has_cmd:
+        return "http"
+    return UNKNOWN
+
+
+def _enabled(spec: dict[str, Any]) -> bool | str:
+    """True/False only when the config says so explicitly; otherwise UNKNOWN."""
+    if isinstance(spec.get("enabled"), bool):
+        return spec["enabled"]
+    if isinstance(spec.get("disabled"), bool):
+        return not spec["disabled"]
+    return UNKNOWN
+
+
 def _candidates_from_config(
     data: Any, source_path: str, client: str, home: str | None = None
 ) -> list[dict[str, Any]]:
@@ -232,15 +261,21 @@ def _candidates_from_config(
             "owner": str(spec["owner"]) if spec.get("owner") else UNKNOWN,
             "version": str(spec["version"]) if spec.get("version") else UNKNOWN,
             "access_mode": _access_mode(args),
+            "transport": _transport(spec),
+            "enabled": _enabled(spec),
         }
-        if spec.get("url"):
-            record["url"] = mask(_redact_string(str(spec["url"])))
+        url = spec.get("url") or spec.get("serverUrl")  # serverUrl: Windsurf
+        if url:
+            record["url"] = mask(_redact_string(str(url)))
         if spec.get("headers"):
             record["headers"] = _redact_mapping(spec["headers"])
         record["provenance_hash"] = _provenance_hash(source_path, tool_name, command)
-        record["config_hash"] = HashEngine.hash_config(
-            {k: record.get(k) for k in ("command", "args", "env", "url", "headers")}
-        )
+        hashed = {k: record.get(k) for k in ("command", "args", "env", "url", "headers")}
+        if record["enabled"] != UNKNOWN:
+            # Only an explicit enabled/disabled flag feeds drift, so configs
+            # without one keep the config_hash they always had.
+            hashed["enabled"] = record["enabled"]
+        record["config_hash"] = HashEngine.hash_config(hashed)
         candidates.append(record)
     return candidates
 
@@ -288,18 +323,42 @@ _LOCATIONS: dict[str, list[tuple[str, str, tuple[str, ...]]]] = {
         ("claude-desktop", "%APPDATA%", ("Claude", "claude_desktop_config.json")),
         ("cursor", "%USERPROFILE%", (".cursor", "mcp.json")),
         ("vscode", "%APPDATA%", ("Code", "User", "mcp.json")),
+        ("vscode-insiders", "%APPDATA%", ("Code - Insiders", "User", "mcp.json")),
+        ("claude-code", "%USERPROFILE%", (".claude.json",)),
+        ("windsurf", "%USERPROFILE%", (".codeium", "windsurf", "mcp_config.json")),
+        ("codex", "%CODEX_HOME%", ("config.toml",)),
     ],
     "macos": [
         ("claude-desktop", "~", ("Library", "Application Support", "Claude", "claude_desktop_config.json")),
         ("cursor", "~", (".cursor", "mcp.json")),
         ("vscode", "~", ("Library", "Application Support", "Code", "User", "mcp.json")),
+        ("vscode-insiders", "~", ("Library", "Application Support", "Code - Insiders", "User", "mcp.json")),
+        ("claude-code", "~", (".claude.json",)),
+        ("windsurf", "~", (".codeium", "windsurf", "mcp_config.json")),
+        ("codex", "%CODEX_HOME%", ("config.toml",)),
     ],
     "linux": [
         ("claude-desktop", "~", (".config", "Claude", "claude_desktop_config.json")),
         ("cursor", "~", (".cursor", "mcp.json")),
         ("vscode", "~", (".config", "Code", "User", "mcp.json")),
+        ("vscode-insiders", "~", (".config", "Code - Insiders", "User", "mcp.json")),
+        ("claude-code", "~", (".claude.json",)),
+        ("windsurf", "~", (".codeium", "windsurf", "mcp_config.json")),
+        ("codex", "%CODEX_HOME%", ("config.toml",)),
     ],
 }
+
+# Project-level configs looked for inside each workspace folder the user names.
+# Discovery breadth (Claude Code, Windsurf, Codex, VS Code profiles, workspace
+# configs) ported from UdanM/forkit-agent-audit @ 3f5b2aa (discovery.py).
+_WORKSPACE_CONFIGS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("vscode", (".vscode", "mcp.json")),
+    ("cursor", (".cursor", "mcp.json")),
+    ("claude-code", (".mcp.json",)),
+    ("codex", (".codex", "config.toml")),
+)
+
+MAX_CONFIG_BYTES = 1024 * 1024
 
 
 def known_config_locations(
@@ -317,20 +376,106 @@ def known_config_locations(
     plat = _normalize_platform(platform)
     env = dict(os.environ if env is None else env)
     home_path = Path(home) if home is not None else Path.home()
+    userprofile = Path(env["USERPROFILE"]) if env.get("USERPROFILE") else home_path
     bases = {
         "~": home_path,
         "%APPDATA%": Path(env["APPDATA"]) if env.get("APPDATA") else None,
-        "%USERPROFILE%": Path(env["USERPROFILE"]) if env.get("USERPROFILE") else home_path,
+        "%USERPROFILE%": userprofile,
     }
     out = []
     for client, token, parts in _LOCATIONS[plat]:
-        base = bases[token]
+        if token == "%CODEX_HOME%":
+            if env.get("CODEX_HOME"):
+                base: Path | None = Path(env["CODEX_HOME"])
+            else:
+                # Default Codex home: ~/.codex. Keep the label username-free.
+                token = "%USERPROFILE%" if plat == "windows" else "~"
+                parts = (".codex", *parts)
+                base = userprofile if plat == "windows" else home_path
+        else:
+            base = bases[token]
         out.append({
             "client": client,
             "label": "/".join((token, *parts)),
             "path": base.joinpath(*parts) if base is not None else None,
         })
+    # VS Code profiles keep their own mcp.json under User/profiles/<id>/.
+    for loc in list(out):
+        if loc["client"] in ("vscode", "vscode-insiders") and loc["path"] is not None:
+            profiles = loc["path"].parent / "profiles"
+            try:
+                found = sorted(profiles.glob("*/mcp.json")) if profiles.is_dir() else []
+            except OSError:
+                found = []
+            prefix = loc["label"].rsplit("/", 1)[0]
+            for prof in found:
+                out.append({
+                    "client": f"{loc['client']}-profile",
+                    "label": f"{prefix}/profiles/{prof.parent.name}/mcp.json",
+                    "path": prof,
+                })
     return out
+
+
+def workspace_config_locations(workspaces: list[str | Path] | None) -> list[dict[str, Any]]:
+    """Project-level MCP configs inside the given workspace folders.
+
+    Labels use the workspace folder name, never its absolute path, so IDs do not
+    depend on where the project is checked out. Two workspaces with the same
+    folder name get an index suffix so their tools are never merged.
+    """
+    out: list[dict[str, Any]] = []
+    seen: dict[str, int] = {}
+    for ws in workspaces or []:
+        root = Path(ws)
+        name = root.name or "workspace"
+        seen[name] = seen.get(name, 0) + 1
+        tag = name if seen[name] == 1 else f"{name}#{seen[name]}"
+        for client, parts in _WORKSPACE_CONFIGS:
+            out.append({
+                "client": client,
+                "label": "/".join((f"<workspace:{tag}>", *parts)),
+                "path": root.joinpath(*parts),
+            })
+    return out
+
+
+def _load_config(path: Path) -> Any:
+    """Read one config file as data (JSON, or TOML for Codex). Never executes it."""
+    with path.open("rb") as fh:
+        raw = fh.read(MAX_CONFIG_BYTES + 1)
+    if len(raw) > MAX_CONFIG_BYTES:
+        raise ValueError("config file is larger than 1 MiB")
+    text = raw.decode("utf-8-sig")
+    if path.suffix.lower() == ".toml":
+        try:
+            import tomllib
+        except ImportError as exc:  # pragma: no cover - Python < 3.11
+            raise ValueError("TOML configs need Python 3.11+") from exc
+        try:
+            data = tomllib.loads(text)
+        except tomllib.TOMLDecodeError as exc:
+            raise json.JSONDecodeError(str(exc).split("(")[0].strip(), text, 0) from exc
+        servers = data.get("mcp_servers") if isinstance(data, dict) else None
+        return {"mcpServers": servers if isinstance(servers, dict) else {}}
+    return json.loads(text)
+
+
+def _candidates_from_location(data: Any, label: str, client: str, home: str | None) -> list[dict[str, Any]]:
+    """Candidates for one location. Claude Code's ~/.claude.json also holds
+    per-project servers under ``projects.<path>.mcpServers``; each project is
+    its own source (``label#projects/<masked path>``) so same-named servers in
+    different projects stay separate tools."""
+    found = _candidates_from_config(data, label, client, home=home)
+    if client == "claude-code" and isinstance(data.get("projects"), dict):
+        for proj_path, proj in sorted(data["projects"].items()):
+            if isinstance(proj, dict) and isinstance(proj.get("mcpServers"), dict) and proj["mcpServers"]:
+                masked = _mask_home(str(proj_path), home) if home else str(proj_path)
+                masked = masked.replace("\\", "/")
+                found += _candidates_from_config(
+                    {"mcpServers": proj["mcpServers"]}, f"{label}#projects/{masked}", client, home=home
+                )
+    return found
 
 
 def _safe_error(exc: BaseException) -> str:
@@ -343,6 +488,7 @@ def scan_local_machine(
     platform: str | None = None,
     home: str | Path | None = None,
     env: dict[str, str] | None = None,
+    workspaces: list[str | Path] | None = None,
 ) -> dict[str, Any]:
     """Read-only scan of this machine's MCP configs. Never raises for a bad file.
 
@@ -354,15 +500,15 @@ def scan_local_machine(
     home_str = str(home if home is not None else Path.home())
     locations: list[dict[str, Any]] = []
     candidates: list[dict[str, Any]] = []
-    for loc in known_config_locations(platform, home, env):
+    for loc in known_config_locations(platform, home, env) + workspace_config_locations(workspaces):
         row = {"client": loc["client"], "location": loc["label"], "status": "missing", "servers": 0, "error": None}
         path: Path | None = loc["path"]
         try:
             if path is None:
                 row["status"] = "unresolved"
             elif path.exists():
-                data = json.loads(path.read_text(encoding="utf-8"))
-                found = _candidates_from_config(data, loc["label"], loc["client"], home=home_str)
+                data = _load_config(path)
+                found = _candidates_from_location(data, loc["label"], loc["client"], home_str)
                 candidates += found
                 row.update(status="found", servers=len(found))
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -385,7 +531,9 @@ def scan_local_machine(
 
 def _diff(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
     lines: list[str] = []
-    for key in ("command", "url", "access_mode"):
+    for key in ("command", "url", "access_mode", "transport", "enabled"):
+        if key in ("transport", "enabled") and (key not in old or key not in new):
+            continue  # records minted before these fields existed
         if old.get(key) != new.get(key):
             lines.append(f"{key}: {old.get(key, UNKNOWN)!r} -> {new.get(key, UNKNOWN)!r}")
     a, b = old.get("args", []), new.get("args", [])
@@ -667,11 +815,16 @@ def raw_secret_values_from_configs(paths: list[str | Path]) -> list[str]:
     values: list[str] = []
     for path in paths:
         try:
-            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            data = _load_config(Path(path))
         except (OSError, ValueError):
             continue
-        servers = (data.get("mcpServers") or data.get("servers") or {}) if isinstance(data, dict) else {}
-        for spec in servers.values() if isinstance(servers, dict) else []:
+        if not isinstance(data, dict):
+            continue
+        blocks = [data.get("mcpServers") or data.get("servers") or {}]
+        if isinstance(data.get("projects"), dict):  # Claude Code per-project servers
+            blocks += [p.get("mcpServers") or {} for p in data["projects"].values() if isinstance(p, dict)]
+        specs = [spec for b in blocks if isinstance(b, dict) for spec in b.values()]
+        for spec in specs:
             if isinstance(spec, dict):
                 for key in ("env", "headers"):
                     mapping = spec.get(key)
@@ -907,9 +1060,10 @@ class AutoDiscoverEngine:
         platform: str | None = None,
         home: str | Path | None = None,
         env: dict[str, str] | None = None,
+        workspaces: list[str | Path] | None = None,
     ) -> dict[str, Any]:
         """Real-machine scan, annotated against this engine's own registry."""
-        summary = scan_local_machine(platform, home, env)
+        summary = scan_local_machine(platform, home, env, workspaces)
         summary["candidates"] = self._annotate(summary["candidates"])
         return summary
 
