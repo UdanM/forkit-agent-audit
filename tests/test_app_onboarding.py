@@ -25,4 +25,9 @@ def test_one_click_setup_then_link_shows_plain_labels():
     text = " ".join(m.value for m in at.markdown)
     assert not at.exception
     assert "NO APPROVAL ON FILE" in text and "Incident recorded" in text
+    assert "In plain words" in text and "1 INCIDENT" in text          # Map summary
+    _button(at, "Save log checkpoint").click().run()
+    _button(at, "Simulate log tampering").click().run()
+    assert "Someone rewrote the log" in " ".join(m.value for m in at.markdown)
+    _button(at, "Restore original log").click().run()
     _button(at, "Start the demo over").click().run()
