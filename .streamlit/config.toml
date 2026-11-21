@@ -20,6 +20,24 @@ headingFontWeights = [700, 700, 650, 650, 600, 600]
 headingFontSizes = ["2rem", "1.6rem", "1.35rem", "1.1rem", "1rem", "0.9rem"]
 dataframeHeaderBackgroundColor = "#F2EFE9"
 dataframeBorderColor = "#E6E1D8"
+# Inline code and alert tones tuned to the warm palette (no stock cool greens).
+codeTextColor = "#44403C"
+codeBackgroundColor = "#F2EFE9"
+greenColor = "#2F7A4F"
+greenBackgroundColor = "#EEF5EF"
+greenTextColor = "#1F5C3A"
+yellowColor = "#B7791F"
+yellowBackgroundColor = "#FBF4E4"
+yellowTextColor = "#7A4F0D"
+blueColor = "#3E63A8"
+blueBackgroundColor = "#EEF2F8"
+blueTextColor = "#2B4C8C"
+redColor = "#BE123C"
+redBackgroundColor = "#FBEDEC"
+redTextColor = "#9F1239"
+orangeColor = "#C25E3A"
+orangeBackgroundColor = "#FBEFE9"
+orangeTextColor = "#9A4527"
 
 [theme.sidebar]
 backgroundColor = "#F2EFE9"

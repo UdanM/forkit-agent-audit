@@ -170,6 +170,25 @@ section[data-testid="stSidebar"] hr { margin: 0.8rem 0 !important; border-color:
 .mrow b { font-size:1.15rem; font-weight:700; color:var(--ad-ink); font-variant-numeric: tabular-nums; }
 .mrow.alert b { color:#BE123C; }
 .mrow .badge { margin:0; }
+/* ── 10/10 refinements (style only; no layout rules above are changed) ── */
+.hero-title { font-size:1.85rem; }
+.hero-sub { color:#78716C; }
+[data-testid="stAlert"] > div { border:1px solid rgba(28,25,23,0.07); box-shadow:var(--ad-elev); }
+[data-testid="stAlert"] code { background:rgba(255,255,255,0.65); }
+[data-testid="stExpander"] details { background:#fff; border-color:var(--ad-line); box-shadow:var(--ad-elev); }
+[data-testid="stExpander"] summary:hover { color:var(--ad-accent); }
+[data-baseweb="select"] > div { background:#fff !important; border-color:#D6D1C7 !important; }
+[data-baseweb="select"] > div:hover { border-color:#A8A29E !important; }
+.stButton button:disabled { background:#F2F7F3 !important; border:1px solid #CFE3D5 !important;
+                            color:#2F6B45 !important; opacity:1 !important; cursor:default; }
+.stButton button:focus-visible, .stDownloadButton button:focus-visible {
+    outline:2px solid rgba(194,94,58,0.45); outline-offset:2px; }
+[data-testid="stCaptionContainer"] p { color:#78716C; }
+[data-testid="stCaptionContainer"] strong { color:#44403C; }
+.stTabs [data-testid="stTab"]:hover { box-shadow: inset 0 -2px 0 #E6E1D8; }
+.card h4 .mono, .kv .mono { color:#3F3A36; }
+.mrow b, .badge { font-variant-numeric: tabular-nums; }
+::selection { background: rgba(194,94,58,0.18); }
 </style>
 """,
     unsafe_allow_html=True,
