@@ -20,6 +20,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
 import shutil
 import uuid
 from pathlib import Path
@@ -47,6 +48,7 @@ from src.engine import (
 )
 from src.live_map_html import lifecycle_html, live_map_html
 from src.timeline import timeline_from_files
+from src.timeline_html import activity_feed_html, findings_html
 
 KIND_LABELS = {"mcp_server": "MCP server", "cli_tool": "CLI", "desktop_app": "Desktop app",
                "editor_extension": "Editor extension"}
@@ -246,6 +248,49 @@ section[data-testid="stSidebar"] hr { margin: 0.8rem 0 !important; border-color:
 .note-warn { border-left:2px solid #EA580C; padding:2px 0 2px 10px; margin:4px 0 8px 0; font-size:0.88rem;
              color:#7C2D12; }
 .sb-brand .logo { flex:none; display:block; }
+/* ── Pitch refresh: hero, segmented tabs, next-step card (hero and feed ideas from forkit-agent-audit) ── */
+[data-testid="stToolbar"] { display:none !important; }
+.hero2 { position:relative; overflow:hidden; display:flex; align-items:center; gap:24px; margin:0 0 14px;
+  padding:22px 30px; border-radius:16px; color:#FAF9F6;
+  background: radial-gradient(ellipse at 85% 50%, rgba(194,94,58,0.38) 0, transparent 55%),
+              linear-gradient(135deg, #2A211C 0%, #1C1917 70%); box-shadow:0 10px 30px rgba(28,25,23,0.12); }
+.hero2-text { flex:1 1 auto; min-width:0; position:relative; z-index:1; }
+.hero2 .eyebrow { font-size:0.78rem; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:#E3A07F; }
+.hero2 h1 { font-family:var(--ad-serif) !important; color:#FAF9F6 !important; font-weight:400 !important;
+  font-size:1.85rem !important; line-height:1.15 !important; letter-spacing:-0.02em; margin:8px 0 10px !important; padding:0 !important; }
+.hero2 p { color:#D6CFC7; font-size:0.98rem; line-height:1.5; max-width:46rem; margin:0 0 12px; }
+.flow { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.flow span { display:inline-flex; align-items:center; gap:7px; padding:5px 12px 5px 6px; border-radius:999px;
+  background:rgba(250,249,246,0.08); border:1px solid rgba(250,249,246,0.16); font-size:0.88rem; font-weight:550; }
+.flow b { display:inline-grid; place-items:center; width:20px; height:20px; border-radius:50%; background:#C25E3A;
+  color:#fff; font-size:0.72rem; }
+.flow i { width:14px; height:1px; background:rgba(250,249,246,0.35); }
+.hero2-art { position:relative; flex:0 0 140px; height:140px; }
+.hero2-art .ring { position:absolute; inset:0; border:1px solid rgba(227,160,127,0.45); border-radius:50%; }
+.hero2-art .ring.r2 { inset:28px; border-style:dashed; }
+.hero2-art .core { position:absolute; inset:40px; display:grid; place-items:center; border-radius:22px;
+  background:linear-gradient(135deg,#D7764F,#9A4527); box-shadow:0 0 40px rgba(215,118,79,0.55); }
+.hero2-art .dot { position:absolute; width:9px; height:9px; border-radius:50%; background:#F3C9A8; box-shadow:0 0 12px #F3C9A8; }
+.hero2-art .d1 { left:6px; top:52px; } .hero2-art .d2 { right:10px; bottom:40px; background:#9ED9B5; box-shadow:0 0 12px #9ED9B5; }
+.hero2-art .d3 { right:34px; top:8px; }
+@media (max-width: 1100px) { .hero2-art { display:none; } }
+.whatsnew { margin:0; flex-direction:column; gap:6px; border:0; background:transparent; padding:0; }
+/* Segmented tab bar */
+.stTabs [role="tablist"] { gap:4px !important; border-bottom:0 !important; padding:5px; background:#F2EFE9;
+  border-radius:12px; width:fit-content; max-width:100%; }
+.stTabs [data-testid="stTab"] { padding:7px 14px !important; border-radius:8px; }
+.stTabs [data-testid="stTab"]:hover { box-shadow:none !important; background:rgba(255,255,255,0.6); }
+.stTabs [data-testid="stTab"][aria-selected="true"] { background:#1C1917; }
+.stTabs [data-testid="stTab"][aria-selected="true"] p { color:#FAF9F6 !important; }
+.stTabs .react-aria-SelectionIndicator { display:none !important; }
+/* Next step card */
+.nextstep { display:flex; gap:12px; align-items:baseline; margin:0 0 16px; padding:10px 14px; background:#fff;
+  border:1px solid var(--ad-line); border-left:3px solid #C25E3A; border-radius:10px; font-size:0.93rem; color:#292524;
+  box-shadow:var(--ad-elev); }
+.nextstep > span { flex:none; font-size:0.72rem; font-weight:700; letter-spacing:0.07em; text-transform:uppercase; color:#9A4527; }
+.nextstep code { font-size:0.82rem; background:#F2EFE9; padding:0 4px; border-radius:4px; }
+.ov-tile { border-radius:12px; box-shadow:var(--ad-elev); }
+.ov-value { font-size:2rem; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -341,7 +386,15 @@ def store_label() -> str:
 def demo_hint(step: int) -> None:
     if not demo_mode():
         return
-    st.caption(f"Next in the demo: {DEMO_HINTS[step]}")
+    st.markdown(f'<div class="nextstep"><span>Next step</span><div>{_md_inline(DEMO_HINTS[step])}</div></div>',
+                unsafe_allow_html=True)
+
+
+def _md_inline(text: str) -> str:
+    """Escape, then render **bold** and `code` from the hint strings."""
+    out = html.escape(text)
+    out = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", out)
+    return re.sub(r"`(.+?)`", r"<code>\1</code>", out)
 
 
 SEVERITY_KIND = {"critical": "bad", "high": "bad", "medium": "warn", "low": "slate"}
@@ -663,8 +716,19 @@ with st.sidebar:
 # ── Header ─────────────────────────────────────────────────────────────────────
 
 st.markdown(
-    '<div class="hero"><div class="hero-title">AutoDiscover<span class="hero-sub">Zero-touch AI onboarding '
-    '&amp; passports</span></div></div>',
+    '<div class="hero2"><div class="hero2-text">'
+    '<div class="eyebrow">Forkit AI · Safe onboarding of AI agents and tools</div>'
+    '<h1>Every AI tool gets a passport.<br>Every action gets a trail.</h1>'
+    '<p>AutoDiscover finds the AI tools on a machine, gives each one a permanent ID, flags changes, and shows '
+    'which agent did what, without guessing and without storing a single secret.</p>'
+    '<div class="flow"><span><b>1</b>Discover</span><i></i><span><b>2</b>Passport</span><i></i>'
+    '<span><b>3</b>Govern</span><i></i><span><b>4</b>Link</span><i></i><span><b>5</b>Map</span><i></i>'
+    '<span><b>6</b>Trace</span></div></div>'
+    '<div class="hero2-art" aria-hidden="true"><div class="ring"></div><div class="ring r2"></div>'
+    '<div class="core"><svg viewBox="0 0 24 24" width="44" height="44"><rect x="5" y="3" width="14" height="18" rx="2.5" '
+    'fill="none" stroke="#FAF9F6" stroke-width="1.6"/><circle cx="12" cy="10" r="2.6" fill="none" stroke="#FAF9F6" '
+    'stroke-width="1.6"/><path d="M8.5 16.5h7" stroke="#FAF9F6" stroke-width="1.6" stroke-linecap="round"/></svg></div>'
+    '<i class="dot d1"></i><i class="dot d2"></i><i class="dot d3"></i></div></div>',
     unsafe_allow_html=True,
 )
 
@@ -695,18 +759,20 @@ def ask_store() -> dict[str, Any]:
             "review_queue": eng.review_queue(), "policy_findings": audit["policy_findings"], "timeline": tl}
 
 
-st.markdown(
-    '<div class="whatsnew"><b>New after the team merge</b>'
+whats_new_html = (
+    '<div class="whatsnew"><b>New</b>'
     '<span><i>06 Timeline</i> delegated runs and the log tampering demo</span>'
     '<span><i>04 Linking</i> ambiguous events evt-0004 and evt-0005 go to a review queue</span>'
     '<span><i>Ask AutoDiscover</i> questions answered with sources</span>'
     '<span><i>Sidebar</i> append-only Git archive</span>'
     '<span><i>Scan Real Local Machine</i> Claude Code, Windsurf, Codex, AI CLIs, apps and extensions</span>'
-    '<span><i>Live agents</i> scenario F, a helper that breaks its read-only promise</span></div>',
-    unsafe_allow_html=True,
+    '<span><i>Live agents</i> scenario F, a helper that breaks its read-only promise</span></div>'
 )
 
-with st.expander("Ask AutoDiscover"):
+_c_ask, _c_new = st.columns([3, 2])
+with _c_new.expander("What's new after the team merge"):
+    st.markdown(whats_new_html, unsafe_allow_html=True)
+with _c_ask.expander("Ask AutoDiscover"):
     q_col, b_col = st.columns([5, 1])
     question = q_col.text_input("Question", key="ask_q", label_visibility="collapsed",
                                 placeholder="What needs review?  ·  Who changed reports/q3/summary.md?  ·  "
@@ -1338,13 +1404,11 @@ with tab6:
         st.markdown("**What needs review**")
         if not tl["findings"]:
             st.success("No activity rule fired.")
-        for f in tl["findings"]:
-            st.markdown(
-                f'<div class="card"><h4>{badge(f["severity"].upper(), _SEV_KIND.get(f["severity"], "neutral"))} '
-                f'{html.escape(f["rule_id"])} · {html.escape(f["title"])}</h4>'
-                f'<div class="muted">{html.escape(f["explanation"])}</div>'
-                f'<div class="kv"><b>Records</b><span class="mono">{html.escape(", ".join(f["record_ids"]))}</span></div>'
-                f'</div>', unsafe_allow_html=True)
+        else:
+            st.html(findings_html(tl["findings"]))
+
+        st.markdown("**What happened, in order**")
+        st.html(activity_feed_html(tl))
 
         col = st.column_config.TextColumn
         st.markdown("**Runs and delegation** · one agent identity can have many runs; a helper keeps its own run")
@@ -1358,19 +1422,20 @@ with tab6:
             "delegated_by": col("Delegated by"), "access": col("Access"), "tool": col("Tool"),
             "started": col("Started"), "pid": col("PID"),
         })
-        st.markdown("**Actions**")
-        st.dataframe([{
+        st.markdown("**All actions**")
+        with st.expander("All actions as a table"):
+            st.dataframe([{
             "record": a["record_id"], "time": a["time"], "actor": a["actor"], "why": a["actor_reason"],
             "initiated_by": a["initiated_by"] or "", "action": a.get("operation") or a.get("tool_call", ""),
             "path_or_target": a.get("path") or a.get("target", ""),
             "approval": {True: "yes", False: "no"}.get(a.get("approval"), UNKNOWN),
             "protected": {True: "yes", False: "no"}.get(a.get("protected"), UNKNOWN),
-        } for a in tl["actions"]], width="stretch", hide_index=True, column_config={
-            "record": col("Record"), "time": col("Time"), "actor": col("Actor"), "why": col("Actor evidence"),
-            "initiated_by": col("Initiated by"), "action": col("Action"),
-            "path_or_target": col("Path / target", width="large"), "approval": col("Approval"),
-            "protected": col("Protected"),
-        })
+            } for a in tl["actions"]], width="stretch", hide_index=True, column_config={
+                "record": col("Record"), "time": col("Time"), "actor": col("Actor"), "why": col("Actor evidence"),
+                "initiated_by": col("Initiated by"), "action": col("Action"),
+                "path_or_target": col("Path / target", width="large"), "approval": col("Approval"),
+                "protected": col("Protected"),
+            })
         if tl["shared_files"]:
             st.markdown("**Files touched by more than one actor** · overlap is a lead for review, not proof")
             st.dataframe([{"path": p, "actors": ", ".join(who)} for p, who in tl["shared_files"].items()],
