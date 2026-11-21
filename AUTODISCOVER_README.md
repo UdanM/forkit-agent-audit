@@ -13,17 +13,18 @@ The original project README is untouched in [`README.md`](README.md).
 
 | Capability | What it proves | Where |
 |---|---|---|
-| 💻 **Real local machine scan** | The same pipeline works on real Claude Desktop, Cursor and VS Code configs on Windows, macOS and Linux, read-only, with usernames masked as `~` and an isolated `data/local/` registry | sidebar mode switch · [details](#real-local-machine-mode) |
-| 🛡️ **Policy-as-code** | Declarative, allowlisted rules (`POL-001`…`POL-005`) flag unapproved databases, access-mode downgrades, missing attestation and unapproved writes, each with explicit evidence and no guessing | ② badges, ③ panel · [details](#6-policy-as-code-guardrails) |
-| 📦 **Audit bundle** | A one-click ZIP with a tamper-evident `report_sha256`, passport-ID integrity checks, a secret scan that blocks the download on any leak, and `SHA256SUMS` | sidebar · [details](#7-one-click-compliance--audit-bundle) |
-| 🗺️ **Provenance map** | Config → provenance hash → passport → events and incidents, drawn from live data, with same-name tools visibly kept apart | ⑤ tab · [details](#8-visual-provenance--lifecycle-flow) |
+| **Real local machine scan** | The same pipeline works on real Claude Desktop, Cursor and VS Code configs on Windows, macOS and Linux, read-only, with usernames masked as `~` and an isolated `data/local/` registry | sidebar mode switch · [details](#real-local-machine-mode) |
+| **Policy-as-code** | Declarative, allowlisted rules (`POL-001`…`POL-005`) flag unapproved databases, access-mode downgrades, missing attestation and unapproved writes, each with explicit evidence and no guessing | 02 badges, 03 panel · [details](#6-policy-as-code-guardrails) |
+| **Audit bundle** | A one-click ZIP with a tamper-evident `report_sha256`, passport-ID integrity checks, a secret scan that blocks the download on any leak, and `SHA256SUMS` | sidebar · [details](#7-one-click-compliance--audit-bundle) |
+| **Provenance map** | Config → provenance hash → passport → events and incidents, drawn from live data as a row-by-row flow chart, with same-name tools visibly kept apart | 05 tab · [details](#8-visual-provenance--lifecycle-flow) |
 
 | File | Purpose |
 |---|---|
 | `src/engine.py` | Discovery (fixtures and real machine), redaction, identity, diffing, consented linking, incidents, policies, audit export |
-| `src/provenance_view.py` | Pure, read-only Graphviz DOT builders for the lifecycle diagram and the live provenance map |
+| `src/provenance_view.py` | Pure, read-only Graphviz DOT builders for the lifecycle diagram (shown in the app) and a DOT version of the live map |
+| `src/live_map_html.py` | Read-only HTML flow-chart table for the live provenance map shown in the app |
 | `app.py` | Streamlit demo: Discover → Match → Suggest → Review → Link → Map |
-| `tests/` | `test_acceptance.py` (6) · `test_local_discovery.py` (12) · `test_policies.py` (17) · `test_audit.py` (10) · `test_provenance_view.py` (14) |
+| `tests/` | `test_acceptance.py` (6) · `test_local_discovery.py` (12) · `test_policies.py` (17) · `test_audit.py` (10) · `test_provenance_view.py` (14) · `test_live_map_html.py` (5) |
 | `fixtures/` | Mock MCP configs, a v2 config edit, runtime events, approvals, policies |
 
 ---
@@ -72,7 +73,8 @@ passport_id = compute_id(
 ### 4. No false merges
 Two servers both called `postgres-mcp`, one in Claude Desktop and one in Cursor pointing at a different
 database, get **different** passport IDs because their provenance (config path) differs. The UI marks
-them `⚠ SAME NAME — DO NOT MERGE: Different Provenance`.
+them with the note "Same name as another tool, different provenance", and the live map says "Another tool has
+the same name. Kept as a separate passport."
 
 ### 5. Consent-gated event linking
 `link_event(event, passport_id, user_consent)`:
@@ -114,7 +116,7 @@ the exact facts it used. Findings are saved to `policy_findings.json` in the act
 demo, `data/local/` for real-machine mode) and never written into `passports.json`.
 
 ### 7. One-click compliance & audit bundle
-**📦 Download Governance Audit Report** in the sidebar exports a timestamped ZIP,
+**Download Governance Audit Report** in the sidebar exports a timestamped ZIP,
 `autodiscover-audit-<demo|local>-<UTC timestamp>.zip`. The **JSON** and **Markdown** buttons next to it
 download the report alone.
 
@@ -144,19 +146,23 @@ assert hashlib.sha256(json.dumps(r, sort_keys=True).encode("utf-8")).hexdigest()
 ```
 
 ### 8. Visual provenance & lifecycle flow
-The **⑤ Provenance Map** tab draws two diagrams with `st.graphviz_chart`, so no new dependency is needed:
+The **05 Provenance Map** tab shows two diagrams, with no new dependency:
 
-- **Lifecycle:** client config → redaction → provenance hash → Forkit Core `compute_id` → 🔒 stable
+- **Lifecycle:** client config → redaction → provenance hash → Forkit Core `compute_id` → stable
   `passport_id`. The side records (approvals, drift, links, incidents, policy findings) hang off the
-  passport by `passport_id`, with live counts.
-- **Live provenance map:** one box per config file, with tool → passport (integrity re-derived from
-  provenance) → consented events (red for `MISSING_APPROVAL`) → incidents, plus drift and policy
-  summaries. The two `postgres-mcp` tools sit in separate config boxes. You can focus on one passport, and
-  for large inventories events collapse into counts.
+  passport by `passport_id`, with live counts. Drawn with `st.graphviz_chart`.
+- **Live provenance map:** a flow chart with fixed columns, read left to right: Config file → MCP tool →
+  Passport → Runtime event → Incident, plus an Open checks column for drift and policy findings. There is
+  one row per linked event and every arrow is straight. Labels are plain English: "Integrity check passed"
+  (re-derived from provenance), "No approval on file" (red, `MISSING_APPROVAL`), "Approved" (green),
+  "Incident · Out of expected behavior", and "Not issued yet" (dashed) for candidates. The two
+  `postgres-mcp` tools sit on separate rows under their own config files. You can focus on one passport,
+  and for large inventories events collapse into counts.
 
-`src/provenance_view.py` only reads the `store_dir` it is given (`data/` or `data/local/`). Node IDs are
-generated rather than taken from config text, and every label escapes quotes, backslashes and newlines, so
-unusual real-machine names can't break the diagram. An empty store shows the lifecycle diagram with zero
+`src/provenance_view.py` and `src/live_map_html.py` only read the `store_dir` they are given (`data/` or
+`data/local/`). In the DOT diagrams node IDs are generated rather than taken from config text and every
+label escapes quotes, backslashes and newlines. In the HTML map every stored value is HTML-escaped. Unusual
+real-machine names can't break either view. An empty store shows the lifecycle diagram with zero
 counts and a friendly placeholder for the live map.
 
 ---
@@ -199,9 +205,9 @@ Requires Python 3.10+. Run everything from the repository root.
 ```bash
 pip install -r requirements.txt
 
-# All AutoDiscover tests (59): acceptance, real-machine discovery, policies, audit export, provenance view
+# All AutoDiscover tests (64): acceptance, real-machine discovery, policies, audit export, provenance views
 python -m pytest tests/test_acceptance.py tests/test_local_discovery.py tests/test_policies.py \
-                 tests/test_audit.py tests/test_provenance_view.py -v
+                 tests/test_audit.py tests/test_provenance_view.py tests/test_live_map_html.py -v
 
 # Live demo
 streamlit run app.py
@@ -225,22 +231,22 @@ streamlit run app.py
 
 ## 90-second demo script
 
-Start from **🧹 1-Click Reset Demo State** in the sidebar. Each tab shows a 🎬 *Next demo step* hint.
+Start from **1-Click Reset Demo State** in the sidebar. Each tab shows a *Next demo step* hint.
 
 | # | Click | Say |
 |---|---|---|
-| 1 | **① Discover** → *Scan Local MCP Configs* | "Three MCP servers found. Secrets are redacted at discovery, and the disk check proves no raw secret value is stored." |
-| 2 | **② Identity & Honesty Review** → mint all three | "Owner and version are UNKNOWN because the config doesn't say. Both postgres-mcp tools share a name but have different provenance, so they get different IDs." |
-| 3 | Sidebar → **🔄 Simulate Restart** | "All memory is wiped. The re-scan matched 3 of 3 tools to the same passport IDs, with zero duplicates." |
-| 4 | Sidebar → **📝 Load v2 Config Update** → **③** | "Someone edited filesystem-mcp. It's the same passport, but we flag the diff. The read-only evidence is gone, so access mode is now UNKNOWN until a human reviews it." |
-| 5 | **④** → pick `evt-0002` → *Link Event* without consent | "Linking is blocked without explicit consent." |
+| 1 | **01 Discover** → *Scan Local MCP Configs* | "Three MCP servers found. Secrets are redacted at discovery, and the disk check proves no raw secret value is stored." |
+| 2 | **02 Identity & Review** → mint all three | "Owner and version are UNKNOWN because the config doesn't say. Both postgres-mcp tools share a name but have different provenance, so they get different IDs." |
+| 3 | Sidebar → **Simulate Restart** | "All memory is wiped. The re-scan matched 3 of 3 tools to the same passport IDs, with zero duplicates." |
+| 4 | Sidebar → **Load v2 Config Update** → **03 Drift & Governance** | "Someone edited filesystem-mcp. It's the same passport, but we flag the diff. The read-only evidence is gone, so access mode is now UNKNOWN until a human reviews it." |
+| 5 | **04 Linking & Incidents** → pick `evt-0002` → *Link Event* without consent | "Linking is blocked without explicit consent." |
 | 6 | Tick consent → *Link Event* | "Source and timestamp are recorded. MISSING_APPROVAL comes from approvals.json, and the incident shows a read-only tool tried to write." |
 | 7 | Pick `evt-0003` → choose the filesystem-mcp passport → consent → *Link Event* | "You can't attach an event to the wrong tool." |
-| 8 | **⑤ Provenance Map** | "Config, provenance hash, passport, then events and incidents, all joined by passport_id. The passport itself never changes." |
-| 9 | Sidebar → **📦 Download Governance Audit Report** | "Integrity and secret scan both PASS. The report is tamper-evident and every file is checksummed." |
+| 8 | **05 Provenance Map** | "Each row reads left to right: config file, tool, passport, event, incident. Everything joins by passport_id, and the passport itself never changes." |
+| 9 | Sidebar → **Download Governance Audit Report** | "Integrity and secret scan both PASS. The report is tamper-evident and every file is checksummed." |
 
 ### Real local machine mode
-Pick **💻 Scan Real Local Machine** in the sidebar to run the same pipeline on your own computer. It's a
+Pick **Scan Real Local Machine** in the sidebar to run the same pipeline on your own computer. It's a
 read-only scan of these well-known locations:
 
 | OS | Claude Desktop | Cursor | VS Code |
@@ -260,7 +266,7 @@ read-only scan of these well-known locations:
 
 ### Out-of-order clicks are safe
 Each step shows guidance if it's used too early: restarting before anything is minted, loading v2 before
-`filesystem-mcp` has a passport (and a warning that minting on v2 makes v2 the baseline), opening ③ or ④
+`filesystem-mcp` has a passport (and a warning that minting on v2 makes v2 the baseline), opening 03 or 04
 with nothing minted, or picking an event whose tool isn't minted yet.
 
 ### How the v2 toggle works
