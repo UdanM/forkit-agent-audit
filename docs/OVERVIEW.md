@@ -63,6 +63,12 @@ The demo uses example files that ship with the project. To scan your own compute
 Local Machine** in the sidebar. This is read-only, your username is hidden, and the results are kept apart
 from the demo data.
 
+To watch real agents at work, choose **Live agents (captured runs)** and click **Run Agent Scenarios**.
+A small scripted agent reads and writes example files on this computer, and an n8n workflow does the same
+in the cloud. Every action they take is captured and shown in tab 04, where you can file it under the right
+passport. One agent tries to write where it may only read: the write is blocked and an incident is
+recorded. See [`demo/agents/README.md`](../demo/agents/README.md).
+
 ## Glossary
 
 | Word | Meaning |

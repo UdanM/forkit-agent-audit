@@ -25,6 +25,8 @@ app.py (Streamlit) ── reads/writes only through AutoDiscoverEngine; views in
 | `src/provenance_view.py` | Read-only Graphviz DOT builders (`lifecycle_dot`, `live_map_dot`), plus `load_store`. Kept for export and tests. | ~280 |
 | `src/discovery_host.py` | "Discovered on" machine name, stored as a sidecar keyed by `passport_id`. | ~75 |
 | `app.py` | Streamlit UI: five tabs, sidebar metrics, audit download. No business logic. | ~1,000 |
+| `src/capture/` | Live capture: `mcp_tap.py` (stdio MCP proxy, enforces `--read-only`), `collector.py` (token-checked HTTP), `events.py` (metadata-only events). | ~370 |
+| `demo/agents/` | Live-agent demo: configs, synthetic workspace, approvals, scripted LangGraph agent, n8n workflow, `run_scenarios.py`. | |
 | `fixtures/` | Demo configs (`claude_desktop_config.json`, its edited `_v2`, `cursor_mcp.json`), `runtime_events.jsonl`, `approvals.json`, `policies.json`. | |
 | `forkit/` | Forkit Core (upstream). We call `forkit.domain.identity.compute_id` and `forkit.domain.hashing.HashEngine`. | |
 
@@ -89,10 +91,11 @@ Main engine entry points: `discover_tools`, `scan_local_machine`, `derive_passpo
 
 ## 3. Tests and CI
 
-- **AutoDiscover tests (70):** `test_acceptance.py` (6), `test_local_discovery.py` (12),
+- **AutoDiscover tests (83):** `test_acceptance.py` (6), `test_local_discovery.py` (12),
   `test_policies.py` (17), `test_audit.py` (10), `test_provenance_view.py` (14),
-  `test_live_map_html.py` (6) and `test_discovery_host.py` (5). Every test runs in `tmp_path`.
-- **Full repository suite:** `pytest` runs 446 tests, including Forkit Core's own.
+  `test_live_map_html.py` (6), `test_discovery_host.py` (5), `test_capture.py` (11) and
+  `test_agent_scenarios.py` (2). Every test runs in `tmp_path`.
+- **Full repository suite:** `pytest` runs 459 tests, including Forkit Core's own.
 - **CI (`.github/workflows/ci.yml`, Python 3.11):** `ruff check .`, then `pytest`, then a wheel and sdist
   build, plus a web lint and build job. CI is green. Run `ruff check .` before pushing, and avoid
   f-string syntax that only works on Python 3.12.
@@ -110,8 +113,9 @@ Main engine entry points: `discover_tools`, `scan_local_machine`, `derive_passpo
 
 ## 5. Known weak spots and limits
 
-- **Runtime events are fixtures.** `fixtures/runtime_events.jsonl` stands in for real telemetry, and there
-  is no live hook into an MCP client yet.
+- **Live capture is proxy-based.** The MCP tap captures stdio servers it is placed in front of, and the
+  collector captures agents that report to it (the n8n demo). There is no hook inside closed clients, and
+  remote (URL) MCP servers are not tapped. The default demo tab still uses fixture events.
 - **Approvals are a fixture file.** There is no in-app approve or reject workflow, and no user or role
   model.
 - **Storage is local JSON.** Writes are atomic, but there is no locking or database. The hosted demo can
@@ -130,7 +134,7 @@ Main engine entry points: `discover_tools`, `scan_local_machine`, `derive_passpo
 | To add… | Plug in at |
 |---|---|
 | A new MCP client or config location | `_LOCATIONS` in `src/engine.py`; `_candidates_from_config` for a new JSON shape. |
-| Real runtime events | Feed dicts shaped like `runtime_events.jsonl` lines into `AutoDiscoverEngine.link_event(event, passport_id, user_consent=True)`. |
+| Real runtime events | Already captured by `src/capture/` (see `demo/agents/README.md`). Other sources: POST to the collector, or feed dicts shaped like `runtime_events.jsonl` lines into `AutoDiscoverEngine.link_event(event, passport_id, user_consent=True)`. |
 | A new rule | Add a JSON rule in `fixtures/policies.json`. A new *condition type* needs an evaluator next to `_eval_passport`, `_eval_change` or `_eval_event`, plus an allowlist entry in `load_policies`. |
 | A different store (SQLite, API) | `AutoDiscoverEngine` reads and writes only through `_read_json` and `_write_json` on its `data_dir`, so swap those. |
 | Another UI or a CLI | Use `AutoDiscoverEngine` directly; `app.py` holds no logic. |

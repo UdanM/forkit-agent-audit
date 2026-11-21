@@ -42,6 +42,7 @@ AutoDiscover answers that, one tab at a time:
 | **Real local machine scan** | The same pipeline works on real Claude Desktop, Cursor and VS Code configs on Windows, macOS and Linux, read-only, with usernames masked as `~` and an isolated `data/local/` registry | sidebar mode switch · [details](#real-local-machine-mode) |
 | **Policy-as-code** | Declarative, allowlisted rules (`POL-001`…`POL-005`) flag unapproved databases, access-mode downgrades, missing attestation and unapproved writes, each with explicit evidence and no guessing | 02 badges, 03 panel · [details](#6-policy-as-code-guardrails) |
 | **Audit bundle** | A one-click ZIP with a tamper-evident `report_sha256`, passport-ID integrity checks, a secret scan that blocks the download on any leak, and `SHA256SUMS` | sidebar · [details](#7-one-click-compliance--audit-bundle) |
+| **Live agent capture** | Real agents (a scripted LangGraph agent on a real MCP file server, and an n8n workflow) run five scenarios, and every tool call is captured: locally by an MCP tap that also enforces read-only, in the cloud by a token-checked collector | sidebar "Live agents" · [details](#live-agents-captured-local-and-cloud-runs) |
 | **Provenance map** | Config → provenance hash → passport → events and incidents, drawn from live data as a row-by-row flow chart, with same-name tools visibly kept apart | 05 tab · [details](#8-visual-provenance--lifecycle-flow) |
 
 | File | Purpose |
@@ -50,8 +51,10 @@ AutoDiscover answers that, one tab at a time:
 | `src/provenance_view.py` | Pure, read-only Graphviz DOT builders for the lifecycle diagram and the live map (kept for export and tests) |
 | `src/live_map_html.py` | Read-only HTML flow charts shown in the app: the lifecycle diagram and the live provenance map |
 | `src/discovery_host.py` | "Discovered on" machine name, stored as a sidecar record keyed by `passport_id` |
+| `src/capture/` | Live capture: `mcp_tap.py` (stdio proxy), `collector.py` (HTTP), `events.py` (metadata-only event schema) |
+| `demo/agents/` | Agent configs, synthetic workspace, approvals, the scripted agent, the n8n workflow and `run_scenarios.py` |
 | `app.py` | Streamlit demo: Discover → Match → Suggest → Review → Link → Map |
-| `tests/` | `test_acceptance.py` (6) · `test_local_discovery.py` (12) · `test_policies.py` (17) · `test_audit.py` (10) · `test_provenance_view.py` (14) · `test_live_map_html.py` (6) · `test_discovery_host.py` (5) |
+| `tests/` | `test_acceptance.py` (6) · `test_local_discovery.py` (12) · `test_policies.py` (17) · `test_audit.py` (10) · `test_provenance_view.py` (14) · `test_live_map_html.py` (6) · `test_discovery_host.py` (5) · `test_capture.py` (11) · `test_agent_scenarios.py` (2) |
 | `fixtures/` | Mock MCP configs, a v2 config edit, runtime events, approvals, policies |
 
 ---
@@ -238,10 +241,10 @@ Requires Python 3.10+. Run everything from the repository root.
 ```bash
 pip install -r requirements.txt
 
-# All AutoDiscover tests (70): acceptance, real-machine discovery, policies, audit export, provenance views, discovered-on
+# All AutoDiscover tests (83): acceptance, real-machine discovery, policies, audit export, provenance views, discovered-on, live capture
 python -m pytest tests/test_acceptance.py tests/test_local_discovery.py tests/test_policies.py \
                  tests/test_audit.py tests/test_provenance_view.py tests/test_live_map_html.py \
-                 tests/test_discovery_host.py -v
+                 tests/test_discovery_host.py tests/test_capture.py tests/test_agent_scenarios.py -v
 
 # Live demo
 streamlit run app.py
@@ -316,6 +319,23 @@ read-only scan of these well-known locations:
 - Each scan records which machine it ran on in `data/local/discovered_on.json`. This is context only, not an owner.
 - Run Streamlit on your own computer for this mode. In a cloud container it correctly reports 0 configs.
 
+### Live agents: captured local and cloud runs
+Pick **Live agents (captured runs)** in the sidebar and click **Run Agent Scenarios**. Real agents then
+work on synthetic files while AutoDiscover captures each tool call:
+
+- **Local:** a scripted LangGraph agent (no LLM) talks to the real `@modelcontextprotocol/server-filesystem`
+  through the AutoDiscover tap, which sits in the client config as the server's command. The tap records
+  metadata only and blocks writes on a server marked `--read-only`.
+- **Cloud:** an n8n workflow reads a report, writes a summary and POSTs its actions to the collector,
+  which checks a token and re-builds every event.
+
+The five scenarios cover an approved read, a blocked write, the same tool name in another client, the n8n
+run, and a config edit that removes `--read-only` before a write. Linking still needs your consent tick in
+**04 Linking & Incidents**. Same from the command line: `python -m demo.agents.run_scenarios --consent`.
+Details and requirements: [`demo/agents/README.md`](demo/agents/README.md).
+
+![Live agents: captured scenarios](docs/images/autodiscover/06-live-agents.png)
+
 ### Out-of-order clicks are safe
 Each step shows guidance if it's used too early: restarting before anything is minted, loading v2 before
 `filesystem-mcp` has a passport (and a warning that minting on v2 makes v2 the baseline), opening 03 or 04
@@ -345,5 +365,7 @@ All credentials in the fixtures are fake (`FAKE_..._DO_NOT_USE`).
 - Env values are redacted *before* hashing, so rotating only a secret value doesn't register as drift.
   This is deliberate: we never store a derivative of a secret.
 - Discovery reads the `mcpServers` shape (Claude Desktop, Cursor) and the `servers` shape (VS Code).
-- Runtime events and approvals come from fixture files; there is no live MCP client hook or in-app approval flow yet.
+- The demo tab uses fixture events. Live capture exists (MCP tap and HTTP collector, see Live agents), but it
+  covers stdio MCP servers and agents that report to the collector; there is no hook inside closed clients.
+- Approvals come from JSON files; there is no in-app approval flow yet.
 - Linking is idempotent per (`event_id`, `passport_id`).
