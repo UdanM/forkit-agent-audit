@@ -3,7 +3,8 @@
 [![license](https://img.shields.io/badge/license-Apache%202.0-3f7cc4)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.10%2B-2b2f5c)](pyproject.toml)
 [![streamlit](https://img.shields.io/badge/streamlit-1.67-C25E3A)](requirements.txt)
-[![tests](https://img.shields.io/badge/tests-70%20passing-2f7a4f)](#quickstart)
+[![CI](https://github.com/eren-mutlu/forkit-autodiscover-hackathon/actions/workflows/ci.yml/badge.svg)](https://github.com/eren-mutlu/forkit-autodiscover-hackathon/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/AutoDiscover%20tests-70%20passing-2f7a4f)](#quickstart)
 [![status](https://img.shields.io/badge/status-hackathon%20prototype-d9884a)](#)
 
 Forkit AI Hackathon submission. AutoDiscover finds the AI tools (MCP servers) configured on a machine,
@@ -25,6 +26,12 @@ AutoDiscover answers that, one tab at a time:
 3. **Drift and rules.** If someone edits a tool's settings, the ID stays the same and the change is flagged for review. Company rules are checked automatically.
 4. **Linking.** Actions a tool takes are filed under its ID card, only with permission. Actions without approval, or outside what the tool may do, become incidents.
 5. **Map.** One page shows the whole chain, from settings file to ID card to action to incident.
+
+### What it looks like
+
+| Discover | Identity and review | Provenance map |
+|---|---|---|
+| ![01 Discover: tools found in two config files, secrets removed](docs/images/autodiscover/01-discover.png) | ![02 Identity: one passport per tool, UNKNOWN where the config is silent](docs/images/autodiscover/02-identity.png) | ![05 Provenance map: config file, tool, passport, event and incident on one row](docs/images/autodiscover/05-provenance-map.png) |
 
 ### Phase 2 at a glance (for the judges)
 

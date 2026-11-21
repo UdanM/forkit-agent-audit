@@ -235,11 +235,13 @@ def value_badge(value: Any) -> str:
 # Logo: a Bauhaus-style mark. The circle (discovery) meets the square (the passport):
 # what is found is anchored to one fixed, stable identity.
 LOGO_SVG = (
+    # The provenance chain as a mark: config file, provenance hash, then the passport (terracotta square).
     '<svg class="logo" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">'
     '<rect width="32" height="32" rx="7" fill="#1C1917"/>'
-    '<rect x="14" y="7" width="11" height="11" fill="#FAF9F6"/>'
-    '<circle cx="13" cy="19" r="7" fill="#C25E3A"/>'
-    '<path d="M14 18 L14 12.07 A7 7 0 0 1 19.93 18 Z" fill="#E9B8A3"/></svg>'
+    '<path d="M9.5 22.5 L15.5 16.5 L19 13" stroke="#FAF9F6" stroke-width="2.6" fill="none" stroke-linecap="round"/>'
+    '<circle cx="9.5" cy="22.5" r="3.4" fill="#FAF9F6"/>'
+    '<circle cx="15.5" cy="16.5" r="3.4" fill="#FAF9F6"/>'
+    '<rect x="17.5" y="5.5" width="9" height="9" rx="1.5" fill="#C25E3A"/></svg>'
 )
 
 
@@ -305,7 +307,7 @@ def found_on_html(pid: str) -> str:
     label = discovered_on_label(engine().data_dir, pid, demo=not real_mode())
     if label == UNKNOWN:
         return value_badge(label)
-    return f'<span>{html.escape(label)}</span>' if not real_mode() else f'<span class="mono">{html.escape(label)}</span>'
+    return f'<span class="mono">{"demo fixtures" if not real_mode() else html.escape(label)}</span>'
 
 
 def short(pid: str) -> str:
@@ -483,9 +485,9 @@ with st.sidebar:
         st.rerun()
 
     if real_mode():
-        st.caption("Config mode: **real local machine**")
+        st.caption("Settings source: **this computer**")
     else:
-        st.caption(f"Config mode: **{'v2 (edited)' if st.session_state.v2_active else 'v1 (original)'}**")
+        st.caption(f"Settings file: **{'v2, edited' if st.session_state.v2_active else 'v1, original'}**")
 
     # ── Section 3: Live Governance Metrics & Audit Export (read-only snapshot) ──
     st.divider()
@@ -510,8 +512,7 @@ with st.sidebar:
         f'{status_badge(scan["status"])}</div></div>',
         unsafe_allow_html=True,
     )
-    st.caption("Source of truth: `data/local/passports.json`" if real_mode()
-               else "Source of truth: `data/passports.json`")
+    st.caption("Stored in `data/local/passports.json`" if real_mode() else "Stored in `data/passports.json`")
     stamp = audit["generated_at"][:19].replace("-", "").replace(":", "") + "Z"
     base = f"autodiscover-audit-{'local' if real_mode() else 'demo'}-{stamp}"
     try:
@@ -606,30 +607,35 @@ with tab1:
     if not st.session_state.scanned:
         st.info(f"Click **{scan_label}** to start.")
     elif candidates:
-        rows = [{
+        col = st.column_config.TextColumn
+        st.dataframe([{
             "tool_name": c["tool_name"],
             "client": c["client"],
             "source_path": c["source_path"],
             "command": c["command"],
-            "args": " ".join(c["args"]),
-            "env": ", ".join(f'{k}="{v}"' for k, v in c["env"].items()) or "none",
             "owner": c["owner"],
             "discovered_on": "Demo fixtures" if not real_mode() else discovered_on_label(eng.data_dir, c["passport_id"], demo=False),
             "version": c["version"],
             "access_mode": c["access_mode"],
-            "config_hash": c["config_hash"][:12] + "…",
-        } for c in candidates]
-        col = st.column_config.TextColumn
-        st.dataframe(rows, width="stretch", hide_index=True, column_config={
-            "tool_name": col("Tool", width=125), "client": col("Client", width=115),
-            "source_path": col("Config file", width=250), "command": col("Command", width=85),
-            "args": col("Arguments", width=240, help="Full arguments, secrets redacted. Hover a cell to read it all."),
-            "env": col("Environment", width=170), "owner": col("Owner", width=95),
-            "discovered_on": col("Discovered on", width=150,
+        } for c in candidates], width="stretch", hide_index=True, column_config={
+            "tool_name": col("Tool"), "client": col("Client"), "source_path": col("Config file", width="large"),
+            "command": col("Command"), "owner": col("Owner"),
+            "discovered_on": col("Discovered on",
                                  help="Machine the scan ran on. Context only: not the owner, never part of the passport ID."),
-            "version": col("Version", width=90), "access_mode": col("Access", width=100),
-            "config_hash": col("Config hash", width=115),
+            "version": col("Version"), "access_mode": col("Access"),
         })
+        with st.expander("Arguments, environment and settings fingerprint"):
+            st.dataframe([{
+                "tool_name": c["tool_name"],
+                "source_path": c["source_path"],
+                "args": " ".join(c["args"]),
+                "env": ", ".join(f'{k}="{v}"' for k, v in c["env"].items()) or "none",
+                "config_hash": c["config_hash"][:12] + "…",
+            } for c in candidates], width="stretch", hide_index=True, column_config={
+                "tool_name": col("Tool", width=130), "source_path": col("Config file", width=260),
+                "args": col("Arguments", width=560, help="Secrets redacted. Hover a cell to read it all."),
+                "env": col("Environment", width=230), "config_hash": col("Fingerprint", width=120),
+            })
 
         redacted = [(c, k) for c in candidates for k, v in c["env"].items() if v == REDACTED]
         if redacted:
@@ -658,12 +664,15 @@ with tab2:
     st.subheader("Review each server and issue its passport")
     tab_purpose(2)
     demo_hint(2)
-    st.caption(
-        "passport_id = compute_id(passport_type='mcp_server', name, version='UNKNOWN', "
-        "creator_name='UNKNOWN', artifact_hash=sha256(source_path + tool_name + command))"
-    )
+    with st.expander("How the passport ID is calculated"):
+        st.markdown("The ID depends only on **where** a tool is configured: the config file, the tool's name and its "
+                    "command. The same tool in the same file always gets the same ID, on any machine. Arguments and "
+                    "environment are tracked separately, so editing them flags a change instead of creating a new tool.")
+        st.code("passport_id = compute_id(passport_type='mcp_server', name, version='UNKNOWN',\n"
+                "                         creator_name='UNKNOWN',\n"
+                "                         artifact_hash=sha256(source_path + tool_name + command))", language=None)
     if not candidates:
-        st.info("Run discovery in Step 1 first.")
+        st.info("Scan in **01 Discover** first.")
     else:
         name_sources: dict[str, set[str]] = {}
         for c in candidates:
@@ -743,7 +752,7 @@ with tab3:
     elif not st.session_state.v2_active:
         st.info("Toggle **Load v2 Config Update** in the sidebar to simulate an in-place config edit.")
     elif not changed:
-        st.info("v2 is loaded, but no confirmed passport changed. Mint `filesystem-mcp` in Step 2 first, "
+        st.info("v2 is loaded, but no confirmed passport changed. Mint `filesystem-mcp` in **02 Identity & Review** first, "
                 "then toggle v2 off and on again.")
     for c in changed:
         stored = eng.passports()[c["passport_id"]]
