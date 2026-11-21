@@ -55,7 +55,7 @@ APPROVALS_FILE = FIXTURES / "approvals.json"
 
 st.set_page_config(page_title="AutoDiscover · Forkit Passports", page_icon="🛂", layout="wide")
 
-# ── Styling: enterprise SaaS theme (white canvas, slate ink, one blue accent; pairs with config.toml) ──
+# ── Styling: warm editorial skin on the SaaS layout (alabaster canvas, espresso ink, terracotta accent) ──
 #
 # One status palette for every tab, the sidebar and the provenance map:
 #   PASS / APPROVED / CONFIRMED  green    UNKNOWN        amber
@@ -66,7 +66,10 @@ st.markdown(
     """
 <style>
 :root {
-  --ad-ink:#0F172A; --ad-muted:#64748B; --ad-line:#E2E8F0; --ad-soft:#F8FAFC; --ad-blue:#2563EB;
+  --ad-ink:#1C1917; --ad-muted:#57534E; --ad-line:#E6E1D8; --ad-soft:#F2EFE9; --ad-accent:#C25E3A;
+  --ad-accent-hover:#A84D2D; --ad-canvas:#FAF9F6;
+  --ad-serif: Georgia, 'Times New Roman', serif;
+  --ad-elev: 0 1px 3px rgba(28,25,23,0.05), 0 1px 2px rgba(28,25,23,0.03);
   --ad-sans: Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --ad-mono: 'JetBrains Mono', Consolas, 'SF Mono', Menlo, ui-monospace, monospace;
 }
@@ -76,16 +79,19 @@ header[data-testid="stHeader"] { height: 2rem; background: transparent; }
 .block-container, [data-testid="stMainBlockContainer"] { padding: 0.9rem 2rem 2.5rem 2rem; max-width: 1600px; }
 h1, h2, h3, h4 { font-family: var(--ad-sans) !important; color: var(--ad-ink); letter-spacing:-0.015em; }
 h3 { font-weight: 650 !important; margin-top: 0.2rem !important; }
+/* Editorial contrast: serif only for the brand title and each tab's Step heading (st.subheader = h3) */
+[data-testid="stMainBlockContainer"] h3 { font-family: var(--ad-serif) !important; font-weight: 400 !important;
+                                          letter-spacing: -0.01em; }
 code, .mono { font-family: var(--ad-mono) !important; }
 
 /* Header */
 .hero { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 24px;
         padding:0 0 12px 0; }
-.hero-title { font-size:1.6rem; font-weight:700; color:var(--ad-ink); letter-spacing:-0.025em; line-height:1.15; }
-.hero-sub { font-size:0.95rem; font-weight:500; color:var(--ad-muted); margin-left:12px; letter-spacing:0; }
+.hero-title { font-family:var(--ad-serif); font-size:1.6rem; font-weight:400; color:var(--ad-ink); letter-spacing:-0.015em; line-height:1.15; }
+.hero-sub { font-family:var(--ad-sans); font-size:0.95rem; font-weight:500; color:var(--ad-muted); margin-left:12px; letter-spacing:0; }
 .pills { display:flex; flex-wrap:wrap; gap:6px; }
 .pill { display:inline-flex; align-items:center; gap:7px; padding:4px 11px; border-radius:6px;
-        font-weight:550; font-size:0.82rem; color:#334155; background:#fff; border:1px solid var(--ad-line); }
+        font-weight:550; font-size:0.82rem; color:#44403C; background:#fff; border:1px solid var(--ad-line); box-shadow:var(--ad-elev); }
 .pill::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--pill-dot); }
 
 /* Tabs (Streamlit 1.67 renders react-aria tabs) */
@@ -94,7 +100,7 @@ code, .mono { font-family: var(--ad-mono) !important; }
 .stTabs [data-testid="stTab"] p { font-size:0.98rem; font-weight:500; color:var(--ad-muted); }
 .stTabs [data-testid="stTab"]:hover p { color: var(--ad-ink); }
 .stTabs [data-testid="stTab"][aria-selected="true"] p { color: var(--ad-ink); font-weight:650; }
-.stTabs .react-aria-SelectionIndicator { background-color: var(--ad-blue) !important; height: 2px !important; }
+.stTabs .react-aria-SelectionIndicator { background-color: var(--ad-accent) !important; height: 2px !important; }
 
 /* Matte status pills: one meaning per colour */
 .badge { display:inline-block; padding:1px 8px; border-radius:5px; font-weight:600; font-family:var(--ad-sans);
@@ -104,18 +110,19 @@ code, .mono { font-family: var(--ad-mono) !important; }
 .b-unknown  { background:#FFFBEB; color:#B45309; border-color:#FDE68A; }
 .b-bad      { background:#FFF1F2; color:#BE123C; border-color:#FECDD3; }
 .b-warn     { background:#FFF7ED; color:#C2410C; border-color:#FED7AA; }
-.b-slate, .b-neutral { background:#F1F5F9; color:#475569; border-color:#CBD5E1; }
-.b-redacted { background:#EFF6FF; color:#1D4ED8; border-color:#BFDBFE; }
+.b-slate, .b-neutral { background:#F5F5F4; color:#44403C; border-color:#D6D3D1; }
+.b-redacted { background:#EEF2FA; color:#2B4C8C; border-color:#C7D3EA; }
 
 /* Cards */
-.card { border:1px solid var(--ad-line); border-radius:10px; padding:16px 18px; margin-bottom:12px; background:#fff; }
+.card { border:1px solid var(--ad-line); border-radius:10px; padding:16px 18px; margin-bottom:12px; background:#fff;
+        box-shadow:var(--ad-elev); }
 .card h4, .card-body h4 { margin:0 0 8px 0; font-size:1.05rem; font-weight:650; color:var(--ad-ink); }
 .card.drift    { border-color:#FDBA74; }
 .card.incident { border-color:#FDA4AF; background:#FFFBFB; }
 .card.incident h4 { color:#BE123C; }
-.card.audit    { border-color:#BFDBFE; }
+.card.audit    { border-color:#C7D3EA; }
 .muted { color:var(--ad-muted); }
-.mono { font-size:0.84rem; color:#1E293B; }
+.mono { font-size:0.84rem; color:#292524; }
 .kv { display:flex; flex-wrap:nowrap; align-items:baseline; column-gap:6px; margin:3px 0; }
 .kv > b { flex:0 0 140px; color:var(--ad-muted); font-weight:500; font-size:0.9rem; }
 .kv > :not(b) { min-width:0; }
@@ -126,36 +133,39 @@ code, .mono { font-family: var(--ad-mono) !important; }
 [data-testid="stHorizontalBlock"]:has(.card-body) { align-items: stretch; }
 [data-testid="stHorizontalBlock"]:has(.card-body) > [data-testid="stColumn"] > div,
 [data-testid="stHorizontalBlock"]:has(.card-body) > [data-testid="stColumn"] [data-testid="stVerticalBlock"] { height:100%; }
-[class*="st-key-idcard_"] { background:#fff; border-radius:10px !important; }
+[class*="st-key-idcard_"] { background:#fff; border-radius:10px !important; border-color:var(--ad-line) !important;
+                           box-shadow:var(--ad-elev); }
 [class*="st-key-idcard_"] > div:has(.card-body) { flex: 1 1 auto; }
 [class*="st-key-idcard_collision_"] { border-color:#FDBA74 !important; }
 
 /* Tab 5: diagrams framed like every other card */
-[class*="st-key-graphframe_"] { background:#fff; border-radius:10px !important; }
+[class*="st-key-graphframe_"] { background:#fff; border-radius:10px !important; border-color:var(--ad-line) !important;
+                               box-shadow:var(--ad-elev); }
 
 /* Buttons: flat, matte */
 .stButton button, .stDownloadButton button { font-weight:600; border-radius:8px; box-shadow:none; }
-.stButton button[kind="primary"], .stDownloadButton button[kind="primary"] { background:#0F172A; border:1px solid #0F172A; color:#fff; }
-.stButton button[kind="primary"]:hover, .stDownloadButton button[kind="primary"]:hover { background:#1E293B; border-color:#1E293B; }
-.stButton button[kind="secondary"], .stDownloadButton button[kind="secondary"] { background:#fff; border:1px solid #CBD5E1; color:var(--ad-ink); }
-.stButton button[kind="secondary"]:hover, .stDownloadButton button[kind="secondary"]:hover { border-color:#94A3B8; background:var(--ad-soft); }
+.stButton button[kind="primary"], .stDownloadButton button[kind="primary"] { background:var(--ad-accent); border:1px solid var(--ad-accent); color:#fff; }
+.stButton button[kind="primary"]:hover, .stDownloadButton button[kind="primary"]:hover { background:var(--ad-accent-hover); border-color:var(--ad-accent-hover); color:#fff; }
+.stButton button[kind="secondary"], .stDownloadButton button[kind="secondary"] { background:#fff; border:1px solid #D6D1C7; color:var(--ad-ink); }
+.stButton button[kind="secondary"]:hover, .stDownloadButton button[kind="secondary"]:hover { border-color:#A8A29E; background:var(--ad-canvas); color:var(--ad-ink); }
 [data-testid="stAlert"] > div { border-radius:8px; }
 [data-testid="stExpander"] details { border-radius:8px; }
 
 /* Sidebar */
+section[data-testid="stSidebar"] { border-right:1px solid #E5E0D8; }
 [data-testid="stSidebarUserContent"] { padding-top: 0.25rem; }
 [data-testid="stSidebarHeader"] { height: 2rem; padding-top: 0.6rem; padding-bottom: 0; }
 section[data-testid="stSidebar"] hr { margin: 0.8rem 0 !important; border-color: var(--ad-line); }
-.sb-brand { display:flex; align-items:center; gap:9px; font-size:1.2rem; font-weight:700; color:var(--ad-ink);
-            letter-spacing:-0.02em; }
-.mark { width:22px; height:22px; border-radius:6px; background:var(--ad-ink); color:#fff; font-size:0.72rem;
-        font-weight:700; display:inline-flex; align-items:center; justify-content:center; letter-spacing:0; }
+.sb-brand { display:flex; align-items:center; gap:9px; font-family:var(--ad-serif); font-size:1.3rem; font-weight:400;
+            color:var(--ad-ink); letter-spacing:-0.01em; }
+.mark { width:22px; height:22px; border-radius:6px; background:var(--ad-accent); color:#fff; font-size:0.72rem;
+        font-family:var(--ad-sans); font-weight:700; display:inline-flex; align-items:center; justify-content:center; letter-spacing:0; }
 .sb-tag { color:var(--ad-muted); font-size:0.8rem; margin-top:4px; }
 .sb-section { font-size:0.72rem; font-weight:650; letter-spacing:0.06em; text-transform:uppercase;
               color:var(--ad-muted); margin:2px 0 8px 0; }
-.metrics { background:#fff; border:1px solid var(--ad-line); border-radius:8px; margin-bottom:10px; }
+.metrics { background:#fff; border:1px solid var(--ad-line); border-radius:8px; margin-bottom:10px; box-shadow:var(--ad-elev); }
 .mrow { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; font-size:0.92rem;
-        color:#334155; }
+        color:#44403C; }
 .mrow + .mrow { border-top:1px solid var(--ad-line); }
 .mrow b { font-size:1.15rem; font-weight:700; color:var(--ad-ink); font-variant-numeric: tabular-nums; }
 .mrow.alert b { color:#BE123C; }
@@ -444,7 +454,7 @@ with st.sidebar:
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 
-PRINCIPLES = [("Metadata-only", "#2563EB"), ("Unknown stays UNKNOWN", "#D97706"),
+PRINCIPLES = [("Metadata-only", "#3E63A8"), ("Unknown stays UNKNOWN", "#D97706"),
               ("No false merges", "#EA580C"), ("Consent-gated linking", "#059669")]
 st.markdown(
     '<div class="hero"><div class="hero-title">AutoDiscover<span class="hero-sub">Zero-touch AI onboarding '

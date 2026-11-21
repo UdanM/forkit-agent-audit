@@ -1,16 +1,15 @@
-# Enterprise SaaS theme for the AutoDiscover demo: white canvas, slate ink,
-# flat matte controls, one blue accent. System fonts only (no web-font
-# download), so it renders the same offline on the demo laptop.
+# Warm editorial skin for the AutoDiscover demo on the SaaS layout:
+# alabaster canvas, warm stone sidebar, espresso ink, matte terracotta accent.
+# System fonts only (no web-font download), so it renders the same offline.
 
 [theme]
 base = "light"
-primaryColor = "#0F172A"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F8FAFC"
-textColor = "#0F172A"
-linkColor = "#2563EB"
-blueColor = "#2563EB"
-borderColor = "#E2E8F0"
+primaryColor = "#C25E3A"
+backgroundColor = "#FAF9F6"
+secondaryBackgroundColor = "#F2EFE9"
+textColor = "#1C1917"
+linkColor = "#A84D2D"
+borderColor = "#E6E1D8"
 showWidgetBorder = true
 baseRadius = "0.5rem"
 baseFontSize = 17
@@ -19,13 +18,13 @@ headingFont = "Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial
 codeFont = "'JetBrains Mono', Consolas, 'SF Mono', Menlo, monospace"
 headingFontWeights = [700, 700, 650, 650, 600, 600]
 headingFontSizes = ["2rem", "1.6rem", "1.35rem", "1.1rem", "1rem", "0.9rem"]
-dataframeHeaderBackgroundColor = "#F8FAFC"
-dataframeBorderColor = "#E2E8F0"
+dataframeHeaderBackgroundColor = "#F2EFE9"
+dataframeBorderColor = "#E6E1D8"
 
 [theme.sidebar]
-backgroundColor = "#F8FAFC"
+backgroundColor = "#F2EFE9"
 secondaryBackgroundColor = "#FFFFFF"
-borderColor = "#E2E8F0"
+borderColor = "#E5E0D8"
 showSidebarBorder = true
 
 [client]
