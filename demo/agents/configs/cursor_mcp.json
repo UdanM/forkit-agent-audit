@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "files-local": {
+      "command": "python",
+      "args": ["-m", "src.capture.mcp_tap", "--client", "cursor",
+               "--config", "configs/cursor_mcp.json", "--server", "files-local",
+               "--agent", "langgraph-reporter",
+               "--", "npx", "-y", "@modelcontextprotocol/server-filesystem@2.4.0", "data/agents/workspace/drafts"]
+    }
+  }
+}

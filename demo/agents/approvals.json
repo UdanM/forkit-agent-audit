@@ -1,0 +1,31 @@
+{
+  "_comment": "Synthetic approvals for the live-agent demo, joined by passport_id. files-local (Claude Desktop) may read only. n8n-report-flow may read only. files-local (Cursor) has no record.",
+  "approvals": [
+    {
+      "approval_id": "appr-agent-001",
+      "passport_id": "1986133fd3c29343e52d9f95cd48daf0889b193a0ae0199ab78e0a866652ba10",
+      "tool_name": "files-local",
+      "source_path": "configs/claude_desktop_config.json",
+      "status": "approved",
+      "approved_actions": [
+        "mcp.read_text_file",
+        "mcp.list_directory",
+        "mcp.list_allowed_directories"
+      ],
+      "approved_by": "demo-security-reviewer",
+      "approved_at": "2026-11-21T09:00:00Z"
+    },
+    {
+      "approval_id": "appr-agent-002",
+      "passport_id": "eb685608e6236dafa197e72d58a23d41ac0e5e77382704a5278ed161bfbf257c",
+      "tool_name": "n8n-report-flow",
+      "source_path": "configs/n8n_mcp.json",
+      "status": "approved",
+      "approved_actions": [
+        "n8n.read_file"
+      ],
+      "approved_by": "demo-security-reviewer",
+      "approved_at": "2026-11-21T09:00:00Z"
+    }
+  ]
+}

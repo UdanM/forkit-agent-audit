@@ -48,3 +48,4 @@ data/live_configs/
 data/local/
 __pycache__/
 .pytest_cache/
+data/agents/

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "files-local": {
+      "command": "python",
+      "args": ["-m", "src.capture.mcp_tap", "--client", "claude-desktop",
+               "--config", "configs/claude_desktop_config.json", "--server", "files-local",
+               "--agent", "langgraph-reporter", "--read-only",
+               "--", "npx", "-y", "@modelcontextprotocol/server-filesystem@2.4.0", "data/agents/workspace/reports"]
+    }
+  }
+}
