@@ -54,3 +54,30 @@ def test_mini_server_refuses_paths_outside_its_folder(tmp_path):
     bad = handle(tmp_path, {**call, "params": {"name": "read_text_file", "arguments": {"path": "../x"}}})
     assert bad["result"]["isError"] is True
     assert handle(tmp_path, {"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
+
+
+def test_n8n_env_allows_the_workflows_env_reads_on_n8n_2(tmp_path):
+    """n8n 2.x denies $env by default; the subprocess must opt out, and every $env the
+    workflow reads must be set by us, not inherited from the host."""
+    import re
+
+    env = rs.n8n_env(tmp_path, tmp_path / "out", "http://127.0.0.1:1/events", "tok")
+    assert env["N8N_BLOCK_ENV_ACCESS_IN_NODE"] == "false"
+    flow = (rs.DEMO / "n8n" / "report_flow.json").read_text(encoding="utf-8")
+    used = set(re.findall(r"\$env\.([A-Z0-9_]+)", flow))
+    assert used and used <= {k for k in env if k.startswith(("AUTODISCOVER_", "N8N_"))}
+
+
+def test_run_n8n_passes_that_env_to_the_subprocess(tmp_path):
+    import sys
+
+    import pytest
+
+    if sys.platform == "win32":
+        pytest.skip("uses a POSIX shell script as a stand-in for n8n")
+    fake = tmp_path / "n8n"
+    fake.write_text('#!/bin/sh\n[ "$N8N_BLOCK_ENV_ACCESS_IN_NODE" = "false" ] || '
+                    '{ echo "access to env vars denied"; exit 1; }\n', encoding="utf-8")
+    fake.chmod(0o755)
+    ok, msg = rs.run_n8n(str(fake), tmp_path, tmp_path / "out", "http://127.0.0.1:1/events", "tok")
+    assert ok, msg
