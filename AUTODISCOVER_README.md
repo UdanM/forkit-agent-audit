@@ -9,12 +9,22 @@ It is built on top of Forkit Core in this repository. Passport IDs come from For
 `forkit.domain.identity.compute_id`, and hashing uses `forkit.domain.hashing.HashEngine`.
 The original project README is untouched in [`README.md`](README.md).
 
+### Phase 2 at a glance (for the judges)
+
+| Capability | What it proves | Where |
+|---|---|---|
+| 💻 **Real local machine scan** | The same pipeline works on real Claude Desktop, Cursor and VS Code configs on Windows, macOS and Linux, read-only, with usernames masked as `~` and an isolated `data/local/` registry | sidebar mode switch · [details](#real-local-machine-mode) |
+| 🛡️ **Policy-as-code** | Declarative, allowlisted rules (`POL-001`…`POL-005`) flag unapproved databases, access-mode downgrades, missing attestation and unapproved writes, each with explicit evidence and no guessing | ② badges, ③ panel · [details](#6-policy-as-code-guardrails) |
+| 📦 **Audit bundle** | A one-click ZIP with a tamper-evident `report_sha256`, passport-ID integrity checks, a secret scan that blocks the download on any leak, and `SHA256SUMS` | sidebar · [details](#7-one-click-compliance--audit-bundle) |
+| 🗺️ **Provenance map** | Config → provenance hash → passport → events and incidents, drawn from live data, with same-name tools visibly kept apart | ⑤ tab · [details](#8-visual-provenance--lifecycle-flow) |
+
 | File | Purpose |
 |---|---|
-| `src/engine.py` | Discovery, redaction, identity, diffing, consented linking, incident detection |
-| `app.py` | Streamlit demo: Discover → Match → Suggest → Review → Link |
-| `tests/test_acceptance.py` | 6 acceptance tests (the 3 required, the incident bonus, and 2 guardrail tests) |
-| `fixtures/` | Mock Claude Desktop and Cursor MCP configs, a v2 config edit, runtime events, approvals |
+| `src/engine.py` | Discovery (fixtures and real machine), redaction, identity, diffing, consented linking, incidents, policies, audit export |
+| `src/provenance_view.py` | Pure, read-only Graphviz DOT builders for the lifecycle diagram and the live provenance map |
+| `app.py` | Streamlit demo: Discover → Match → Suggest → Review → Link → Map |
+| `tests/` | `test_acceptance.py` (6) · `test_local_discovery.py` (12) · `test_policies.py` (17) · `test_audit.py` (10) · `test_provenance_view.py` (14) |
+| `fixtures/` | Mock MCP configs, a v2 config edit, runtime events, approvals, policies |
 
 ---
 
@@ -133,6 +143,22 @@ r = json.load(open("report.json")); claimed = r.pop("report_sha256")
 assert hashlib.sha256(json.dumps(r, sort_keys=True).encode("utf-8")).hexdigest() == claimed
 ```
 
+### 8. Visual provenance & lifecycle flow
+The **⑤ Provenance Map** tab draws two diagrams with `st.graphviz_chart`, so no new dependency is needed:
+
+- **Lifecycle:** client config → redaction → provenance hash → Forkit Core `compute_id` → 🔒 stable
+  `passport_id`. The side records (approvals, drift, links, incidents, policy findings) hang off the
+  passport by `passport_id`, with live counts.
+- **Live provenance map:** one box per config file, with tool → passport (integrity re-derived from
+  provenance) → consented events (red for `MISSING_APPROVAL`) → incidents, plus drift and policy
+  summaries. The two `postgres-mcp` tools sit in separate config boxes. You can focus on one passport, and
+  for large inventories events collapse into counts.
+
+`src/provenance_view.py` only reads the `store_dir` it is given (`data/` or `data/local/`). Node IDs are
+generated rather than taken from config text, and every label escapes quotes, backslashes and newlines, so
+unusual real-machine names can't break the diagram. An empty store shows the lifecycle diagram with zero
+counts and a friendly placeholder for the live map.
+
 ---
 
 ## Architecture & data boundary
@@ -173,8 +199,9 @@ Requires Python 3.10+. Run everything from the repository root.
 ```bash
 pip install -r requirements.txt
 
-# Acceptance (6) + real-machine discovery (12) + policy-as-code (17) + audit export (10) tests
-python -m pytest tests/test_acceptance.py tests/test_local_discovery.py tests/test_policies.py tests/test_audit.py -v
+# All AutoDiscover tests (59): acceptance, real-machine discovery, policies, audit export, provenance view
+python -m pytest tests/test_acceptance.py tests/test_local_discovery.py tests/test_policies.py \
+                 tests/test_audit.py tests/test_provenance_view.py -v
 
 # Live demo
 streamlit run app.py
@@ -209,6 +236,8 @@ Start from **🧹 1-Click Reset Demo State** in the sidebar. Each tab shows a �
 | 5 | **④** → pick `evt-0002` → *Link Event* without consent | "Linking is blocked without explicit consent." |
 | 6 | Tick consent → *Link Event* | "Source and timestamp are recorded. MISSING_APPROVAL comes from approvals.json, and the incident shows a read-only tool tried to write." |
 | 7 | Pick `evt-0003` → choose the filesystem-mcp passport → consent → *Link Event* | "You can't attach an event to the wrong tool." |
+| 8 | **⑤ Provenance Map** | "Config, provenance hash, passport, then events and incidents, all joined by passport_id. The passport itself never changes." |
+| 9 | Sidebar → **📦 Download Governance Audit Report** | "Integrity and secret scan both PASS. The report is tamper-evident and every file is checksummed." |
 
 ### Real local machine mode
 Pick **💻 Scan Real Local Machine** in the sidebar to run the same pipeline on your own computer. It's a

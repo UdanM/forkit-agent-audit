@@ -37,6 +37,7 @@ from src.engine import (
     raw_secret_values_from_configs,
     render_audit_markdown,
 )
+from src.provenance_view import lifecycle_dot, live_map_dot
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 
@@ -105,7 +106,8 @@ DEMO_HINTS = {
     2: "Point at the SAME NAME and UNKNOWN badges, mint all three, then click **🔄 Simulate Restart** in the sidebar.",
     3: "Toggle **📝 Load v2 Config Update** in the sidebar, show the diff and why access mode is UNKNOWN, then open ④.",
     4: "Pick evt-0002 and click Link without consent (blocked), then tick consent and link (MISSING_APPROVAL + INCIDENT). "
-       "Finish with evt-0003 on the filesystem-mcp passport (blocked).",
+       "Finish with evt-0003 on the filesystem-mcp passport (blocked), then open ⑤.",
+    5: "Close the demo here: walk config → provenance hash → passport → events/incidents, all joined by passport_id.",
 }
 
 
@@ -375,8 +377,9 @@ elif proof:
         st.json({"before_restart": proof["before"], "after_restart": proof["after"]})
 
 # Keyed, stateful tabs: clicking a button inside a tab keeps you on that tab.
-tab1, tab2, tab3, tab4 = st.tabs(
-    ["① Discover", "② Identity & Honesty Review", "③ Metadata Diff & Governance", "④ Consented Linking & Incidents"],
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["① Discover", "② Identity & Honesty Review", "③ Metadata Diff & Governance", "④ Consented Linking & Incidents",
+     "⑤ Provenance Map"],
     key="active_tab",
     on_change="rerun",
 )
@@ -694,3 +697,31 @@ with tab4:
                 "incident": i["incident_id"], "tool": i["tool_name"], "tool_call": i["tool_call"],
                 "timestamp": i["timestamp"], "result": i["result"],
             } for i in eng.incidents()], width="stretch", hide_index=True)
+
+# ── ⑤ Provenance Map ───────────────────────────────────────────────────────────
+
+with tab5:
+    st.subheader("Step 5 · Visual Provenance & Lifecycle Flow")
+    demo_hint(5)
+    store = eng.data_dir                              # data/ (demo) or data/local/ (real machine), read-only
+    st.markdown("**How identity flows**: from client config to a stable passport. Approvals, drift, events, "
+                "incidents and policy findings attach by `passport_id` and never mutate the passport.")
+    st.graphviz_chart(lifecycle_dot(store), width="stretch")
+
+    st.markdown("**Live provenance map**")
+    map_passports = eng.passports()
+    focus_options = [None] + sorted(map_passports)
+    focus = st.selectbox(
+        "Focus", focus_options, key="map_focus",
+        format_func=lambda p: "All tools" if p is None else
+        f'{map_passports[p]["tool_name"]} @ {map_passports[p]["source_path"]} · {short(p)}',
+    )
+    dot = live_map_dot(store, candidates=st.session_state.candidates, focus=focus)
+    if dot is None:
+        st.info("Nothing to map yet. Scan in ① (and mint in ②) and the live map of configs, passports, "
+                "events and incidents appears here.")
+    else:
+        st.graphviz_chart(dot, width="stretch")
+        st.caption("Solid box = confirmed passport (integrity re-derived from provenance) · dashed = candidate "
+                   "not minted yet · red = MISSING_APPROVAL / incident · orange = drift or same-name tools "
+                   "kept apart.")
