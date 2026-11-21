@@ -1,5 +1,5 @@
 """
-AutoDiscover — live demo UI.
+AutoDiscover: live demo UI.
 
     streamlit run app.py
 
@@ -189,6 +189,18 @@ section[data-testid="stSidebar"] hr { margin: 0.8rem 0 !important; border-color:
 .card h4 .mono, .kv .mono { color:#3F3A36; }
 .mrow b, .badge { font-variant-numeric: tabular-nums; }
 ::selection { background: rgba(194,94,58,0.18); }
+/* Logo: a small glossy Frutiger Aero bubble (sky to leaf gradient, specular highlight) */
+.mark { position:relative; width:28px; height:28px; border-radius:9px; overflow:hidden; font-size:0.74rem;
+        background: radial-gradient(120% 90% at 30% 110%, rgba(140,230,120,0.95) 0%, rgba(140,230,120,0) 55%),
+                    linear-gradient(165deg, #9fe3ff 0%, #39a9e6 45%, #1d7fc4 70%, #2fae63 100%);
+        border:1px solid rgba(255,255,255,0.75);
+        box-shadow: inset 0 -3px 6px rgba(0,50,90,0.28), inset 0 1px 1px rgba(255,255,255,0.9),
+                    0 2px 6px rgba(20,90,140,0.35);
+        text-shadow: 0 1px 1px rgba(0,40,80,0.45); }
+.mark::before { content:""; position:absolute; left:2px; right:2px; top:1px; height:52%;
+                border-radius:8px 8px 14px 14px / 8px 8px 9px 9px;
+                background: linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.18) 100%); }
+.mark span { position:relative; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -333,7 +345,7 @@ eng = engine()
 # ── Sidebar: demo superpowers ──────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown('<div class="sb-brand"><span class="mark">AD</span>AutoDiscover</div>'
+    st.markdown('<div class="sb-brand"><span class="mark"><span>AD</span></span>AutoDiscover</div>'
                 '<div class="sb-tag">Built on Forkit Core '
                 '<span class="mono">compute_id</span></div>', unsafe_allow_html=True)
     st.divider()
@@ -559,7 +571,7 @@ with tab1:
             "source_path": c["source_path"],
             "command": c["command"],
             "args": " ".join(c["args"]),
-            "env": ", ".join(f'{k}="{v}"' for k, v in c["env"].items()) or "—",
+            "env": ", ".join(f'{k}="{v}"' for k, v in c["env"].items()) or "none",
             "owner": c["owner"],
             "version": c["version"],
             "access_mode": c["access_mode"],
@@ -627,7 +639,7 @@ with tab2:
                 minted = c["passport_id"] in passports
                 status = badge("CONFIRMED", "ok") if minted else badge("CANDIDATE", "neutral")
                 warn = (
-                    f'<div style="margin:6px 0">{badge("SAME NAME — DO NOT MERGE: Different Provenance", "warn")}</div>'
+                    f'<div style="margin:6px 0">{badge("SAME NAME · DO NOT MERGE: different provenance", "warn")}</div>'
                     if collision else ""
                 )
                 changed = badge("METADATA CHANGED", "bad") if c.get("metadata_changed") else ""
@@ -834,7 +846,7 @@ with tab4:
             st.markdown("**Linked events** · `data/linked_events.json`")
             st.dataframe([{
                 "event": lk["event_id"], "passport": short(lk["passport_id"]), "tool_call": lk["tool_call"],
-                "timestamp": lk["timestamp"], "approval": lk["approval_status"], "flags": ", ".join(lk["flags"]) or "—",
+                "timestamp": lk["timestamp"], "approval": lk["approval_status"], "flags": ", ".join(lk["flags"]) or "none",
             } for lk in eng.linked_events()], width="stretch", hide_index=True)
         with c2:
             st.markdown("**Incident log** · `data/incidents.json`")

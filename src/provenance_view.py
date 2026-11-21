@@ -23,15 +23,16 @@ __all__ = ["dot_escape", "load_store", "lifecycle_dot", "live_map_dot"]
 
 MAX_LABEL = 64
 
-# Projector-friendly palette (matches the app's badge colours).
+# Warm editorial palette (matches the app's theme and status pills).
 _C = {
-    "ink": "#1f2937", "muted": "#6b7280", "line": "#9ca3af",
-    "blue_bg": "#e8eefc", "blue": "#1d3f8f",
-    "green_bg": "#e3f6e8", "green": "#14632f",
-    "amber_bg": "#fff4d6", "amber": "#7a5200",
-    "orange_bg": "#ffe9d6", "orange": "#8a3b00",
-    "red_bg": "#fde6e6", "red": "#a1161b",
-    "grey_bg": "#f3f4f6",
+    "ink": "#1c1917", "muted": "#78716c", "line": "#c9c2b6", "hair": "#e6e1d8",
+    "accent": "#c25e3a",
+    "blue_bg": "#eef2f8", "blue": "#2b4c8c",
+    "green_bg": "#e3f6e8", "green": "#1f6b3a",
+    "amber_bg": "#fbf4e4", "amber": "#7a4f0d",
+    "orange_bg": "#fbefe9", "orange": "#9a4527",
+    "red_bg": "#fde6e6", "red": "#9f1239",
+    "grey_bg": "#f5f3ef",
 }
 _SEV_ORDER = ("critical", "high", "medium", "low")
 
@@ -90,54 +91,68 @@ def _header(name: str, rankdir: str = "LR", font: int = 11, nodesep: float = 0.3
 
 # ── Concept: lifecycle ─────────────────────────────────────────────────────────
 
+def _card(step: str, title: str, sub: str, strip: str | None = None, border: str | None = None,
+          width: int = 1, sub_color: str | None = None) -> str:
+    """HTML-like label: a quiet white card with an optional colour strip on the left.
+
+    Only fixed text and integers go in here (never config text), so no escaping is needed.
+    All text stays at the header font size: Streamlit renders SVG text at ~11 units
+    regardless of POINT-SIZE, so smaller sizes would overflow their cards.
+    """
+    c = _C
+    rows = []
+    if step:
+        rows.append(f'<TR><TD ALIGN="LEFT"><FONT COLOR="{c["muted"]}">{step}</FONT></TD></TR>')
+    rows.append(f'<TR><TD ALIGN="LEFT"><B>{title}</B></TD></TR>')
+    rows.append(f'<TR><TD ALIGN="LEFT"><FONT COLOR="{sub_color or c["muted"]}">{sub}</FONT></TD></TR>')
+    body = (f'<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="1">{"".join(rows)}</TABLE>')
+    strip_cell = f'<TD BGCOLOR="{strip}" WIDTH="3"></TD>' if strip else ""
+    return (f'<<TABLE BORDER="{width}" COLOR="{border or c["line"]}" BGCOLOR="white" STYLE="rounded" '
+            f'CELLBORDER="0" CELLSPACING="0" CELLPADDING="6"><TR>{strip_cell}<TD ALIGN="LEFT">{body}</TD></TR>'
+            f'</TABLE>>')
+
+
 def lifecycle_dot(store_dir: str | Path) -> str:
     """The identity lifecycle, annotated with live counts from ``store_dir``.
 
-    Always a complete diagram, also for an empty store (counts are 0).
+    Always a complete diagram, also for an empty store (counts are 0). Styled as
+    quiet white cards on hairlines: one accent (the passport) and a thin colour
+    strip per sidecar record type, instead of pastel fills.
     """
     s = load_store(store_dir)
     n_missing = sum(1 for x in s["links"] if x.get("approval_status") == MISSING_APPROVAL)
     c = _C
-    # Compact 3-column grid so the diagram stays large on a projector:
     #   row 1: config → redact → provenance hash
     #   row 2: compute_id → passport
-    #   rows 3-4: sidecar records joined by passport_id
-    out = _header("lifecycle", rankdir="TB", nodesep=0.25, ranksep=0.4)
+    #   row 3: sidecar records joined by passport_id
+    out = _header("lifecycle", rankdir="TB", nodesep=0.3, ranksep=0.45)
     out += [
-        f'  cfg [label="① Client config\\nClaude · Cursor · VS Code", fillcolor="{c["grey_bg"]}"];',
-        f'  red [label="② Redact secrets\\nmetadata-only", fillcolor="{c["blue_bg"]}", fontcolor="{c["blue"]}"];',
-        f'  prov [label="③ Provenance hash\\nsource_path + tool + command", fillcolor="{c["blue_bg"]}", '
-        f'fontcolor="{c["blue"]}"];',
-        f'  cid [label="④ Forkit Core\\ncompute_id()", fillcolor="{c["blue_bg"]}", fontcolor="{c["blue"]}"];',
-        f'  pp [label="🔒 Stable passport_id\\n{len(s["passports"])} confirmed · never rewritten", '
-        f'fillcolor="{c["green_bg"]}", fontcolor="{c["green"]}", penwidth=3, color="{c["green"]}"];',
+        '  graph [splines=ortho];',
+        '  node [shape=plain];',
+        f'  edge [color="{c["line"]}", penwidth=1.2, arrowsize=0.7];',
+        f'  cfg [label={_card("01", "Client config", "Claude · Cursor · VS Code")}];',
+        f'  red [label={_card("02", "Redact secrets", "metadata-only")}];',
+        f'  prov [label={_card("03", "Provenance hash", "source_path + tool + command")}];',
+        f'  cid [label={_card("04", "Forkit Core", "compute_id()")}];',
+        f'  pp [label={_card("PASSPORT", "Stable passport_id", f"{len(s["passports"])} confirmed · never rewritten", border=c["accent"], width=2, sub_color=c["accent"])}];',
         '  { rank=same; cfg; red; prov; }',
         '  { rank=same; cid; pp; }',
-        '  cfg -> red -> prov [penwidth=2];',
-        '  prov -> cid [penwidth=2];',
-        '  cid -> pp [penwidth=2];',
+        '  cfg -> red -> prov;',
+        '  prov -> cid;',
+        f'  cid -> pp [color="{c["accent"]}", penwidth=1.6];',
         '  subgraph cluster_side {',
-        f'    label="Sidecar records · joined by passport_id · never mutate the passport"; '
-        f'style="rounded,dashed"; color="{c["line"]}"; fontcolor="{c["muted"]}"; fontsize=10;',
-        f'    s_appr [label="approvals.json\\nexternal", fillcolor="{c["grey_bg"]}"];',
-        f'    s_chg [label="metadata_changes.json\\n{len(s["changes"])} drift record(s)", '
-        f'fillcolor="{c["orange_bg"]}", fontcolor="{c["orange"]}"];',
-        f'    s_lnk [label="linked_events.json\\n{len(s["links"])} consented · {n_missing} MISSING_APPROVAL", '
-        f'fillcolor="{c["amber_bg"]}", fontcolor="{c["amber"]}"];',
-        f'    s_inc [label="incidents.json\\n{len(s["incidents"])} out-of-expected-behavior", '
-        f'fillcolor="{c["red_bg"]}", fontcolor="{c["red"]}"];',
-        f'    s_pol [label="policy_findings.json\\n{len(s["findings"])} finding(s)", '
-        f'fillcolor="{c["red_bg"]}", fontcolor="{c["red"]}"];',
-        '    { rank=same; s_appr; s_chg; s_lnk; }',
-        '    { rank=same; s_inc; s_pol; }',
-        '    s_chg -> s_inc [style=invis];',
-        '    s_lnk -> s_pol [style=invis];',
+        f'    label="SIDECAR RECORDS  ·  joined by passport_id  ·  never mutate the passport"; labeljust=l; labelloc=b; '
+        f'style="rounded"; color="{c["hair"]}"; bgcolor="#fbfaf7"; fontcolor="{c["muted"]}"; fontsize=9; margin=14;',
+        f'    s_appr [label={_card("", "approvals.json", "external", strip="#a8a29e")}];',
+        f'    s_chg [label={_card("", "metadata_changes.json", f"{len(s["changes"])} drift record(s)", strip="#ea580c", sub_color=c["orange"])}];',
+        f'    s_lnk [label={_card("", "linked_events.json", f"{len(s["links"])} consented · {n_missing} MISSING_APPROVAL", strip="#d97706", sub_color=c["amber"])}];',
+        f'    s_inc [label={_card("", "incidents.json", f"{len(s["incidents"])} out-of-expected-behavior", strip="#be123c", sub_color=c["red"])}];',
+        f'    s_pol [label={_card("", "policy_findings.json", f"{len(s["findings"])} finding(s)", strip="#be123c", sub_color=c["red"])}];',
+        '    { rank=same; s_appr; s_chg; s_lnk; s_inc; s_pol; }',
         '  }',
     ]
-    for side in ("s_appr", "s_chg", "s_lnk"):
-        out.append(f'  pp -> {side} [style=dashed, arrowhead=none, color="{c["green"]}"];')
-    for side in ("s_inc", "s_pol"):
-        out.append(f'  pp -> {side} [style=dashed, arrowhead=none, color="{c["green"]}", constraint=false];')
+    for side in ("s_appr", "s_chg", "s_lnk", "s_inc", "s_pol"):
+        out.append(f'  pp -> {side} [arrowhead=none, color="{c["line"]}", penwidth=1];')
     out.append("}")
     return "\n".join(out)
 
