@@ -55,7 +55,7 @@ APPROVALS_FILE = FIXTURES / "approvals.json"
 
 st.set_page_config(page_title="AutoDiscover · Forkit Passports", page_icon="🛂", layout="wide")
 
-# ── Styling (projector-first enterprise theme; colours pair with .streamlit/config.toml) ──
+# ── Styling: warm editorial theme (ivory canvas, serif headings, terracotta accent, TUM-blue info) ──
 #
 # One status palette for every tab, the sidebar and the provenance map:
 #   PASS / APPROVED / CONFIRMED  green    UNKNOWN        amber
@@ -66,7 +66,9 @@ st.markdown(
     """
 <style>
 :root {
-  --ad-accent:#1f4fd8; --ad-ink:#0f172a; --ad-muted:#475569; --ad-line:#d5dbe5; --ad-soft:#f4f6fa;
+  --ad-accent:#c96442; --ad-accent-dark:#a94f31; --ad-blue:#3070b3; --ad-ink:#141413; --ad-muted:#5e5d59;
+  --ad-line:#e3dfd3; --ad-soft:#f0eee6; --ad-card:#fffefb;
+  --ad-serif: 'Tiempos Text', Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
 }
 .block-container, [data-testid="stMainBlockContainer"] { padding: 1.1rem 2.5rem 2rem 2.5rem; max-width: 1560px; }
 header[data-testid="stHeader"] { height: 2.25rem; background: transparent; }
@@ -75,11 +77,14 @@ h3 { margin-top: 0.2rem !important; }
 /* Hero */
 .hero { display:flex; flex-wrap:wrap; align-items:center; gap:8px 20px; padding:0 0 10px 0;
         border-bottom:1px solid var(--ad-line); margin-bottom:4px; }
-.hero-title { font-size:1.6rem; font-weight:750; color:var(--ad-ink); letter-spacing:-0.01em; line-height:1.15; }
-.hero-title .accent { color:var(--ad-accent); }
+.hero-eyebrow { font-size:0.72rem; font-weight:700; letter-spacing:0.12em; text-transform:uppercase;
+                color:var(--ad-accent); margin-bottom:2px; }
+.hero-title { font-family:var(--ad-serif); font-size:1.75rem; font-weight:500; color:var(--ad-ink);
+              letter-spacing:-0.015em; line-height:1.15; }
+.hero-title .accent { color:var(--ad-accent); font-style:italic; }
 .pills { display:flex; flex-wrap:wrap; gap:6px; }
 .pill { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px;
-        font-weight:650; font-size:0.86rem; color:var(--ad-ink); background:#fff;
+        font-weight:650; font-size:0.86rem; color:var(--ad-ink); background:var(--ad-card);
         border:1px solid var(--ad-line); }
 .pill::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--pill-dot); }
 
@@ -88,7 +93,8 @@ h3 { margin-top: 0.2rem !important; }
 .stTabs [data-baseweb="tab"] { padding: 10px 16px; border-radius:8px 8px 0 0; }
 .stTabs [data-baseweb="tab"] p { font-size:1.02rem; font-weight:650; }
 .stTabs [data-baseweb="tab"]:hover { background: var(--ad-soft); }
-.stTabs [aria-selected="true"] p { color: var(--ad-accent); }
+.stTabs [aria-selected="true"] p { color: var(--ad-ink); }
+h1, h2, h3 { font-family: var(--ad-serif) !important; font-weight: 500 !important; letter-spacing:-0.01em; }
 
 /* Status badges */
 .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-weight:700;
@@ -97,20 +103,20 @@ h3 { margin-top: 0.2rem !important; }
 .b-unknown  { background:#fff4d6; color:#6e4a00; border:1px solid #d9a93a; }
 .b-bad      { background:#fde6e6; color:#9b1419; border:1px solid #e06c70; }
 .b-warn     { background:#ffe9d6; color:#843800; border:1px solid #ea9450; }
-.b-slate    { background:#eef1f5; color:#334155; border:1px solid #b4bdca; }
-.b-neutral  { background:#eef1f5; color:#334155; border:1px solid #b4bdca; }
-.b-redacted { background:#e8eefc; color:#1d3f8f; border:1px solid #8aa6e6; }
+.b-slate    { background:#eceef1; color:#3d4654; border:1px solid #b3bac5; }
+.b-neutral  { background:#efede6; color:#4a4943; border:1px solid #cdc7b8; }
+.b-redacted { background:#e6eef7; color:#1f4e80; border:1px solid #8fb0d6; }
 
 /* Cards */
-.card { border:1px solid var(--ad-line); border-radius:10px; padding:14px 18px; margin-bottom:12px;
-        background:#ffffff; box-shadow:0 1px 2px rgba(15,23,42,0.05);
+.card { border:1px solid var(--ad-line); border-radius:12px; padding:14px 18px; margin-bottom:12px;
+        background:var(--ad-card); box-shadow:0 1px 2px rgba(20,20,19,0.04);
         transition:border-color .15s ease, box-shadow .15s ease; }
-.card:hover { border-color:#9fb0cc; box-shadow:0 2px 8px rgba(15,23,42,0.08); }
-.card h4 { margin:0 0 6px 0; font-size:1.12rem; font-weight:700; color:var(--ad-ink); }
+.card:hover { border-color:#cfc6b4; box-shadow:0 3px 10px rgba(20,20,19,0.07); }
+.card h4 { margin:0 0 6px 0; font-size:1.12rem; font-weight:650; color:var(--ad-ink); }
 .card.merge-warn { border:2px solid #ea9450; background:#fffaf5; }
 .card.drift      { border:2px solid #ea9450; border-left-width:6px; background:#fffaf5; }
 .card.incident   { border:2px solid #d62828; border-left-width:6px; background:#fff5f5; }
-.card.audit      { border:1px solid #9fb3ea; border-left:6px solid var(--ad-accent); background:#f8faff; }
+.card.audit      { border:1px solid #b9cde4; border-left:6px solid var(--ad-blue); background:#f7f9fc; }
 .muted { color:var(--ad-muted); }
 .mono { font-family: Consolas, 'SF Mono', Menlo, ui-monospace, monospace; font-size:0.86rem; }
 .kv { margin:3px 0; }
@@ -119,20 +125,20 @@ h3 { margin-top: 0.2rem !important; }
 
 /* Buttons */
 .stButton button, .stDownloadButton button { font-weight:650; transition: box-shadow .15s ease, transform .05s ease; }
-.stButton button:hover, .stDownloadButton button:hover { box-shadow:0 2px 6px rgba(31,79,216,0.18); }
+.stButton button:hover, .stDownloadButton button:hover { box-shadow:0 2px 8px rgba(201,100,66,0.22); }
 .stButton button:active, .stDownloadButton button:active { transform: translateY(1px); }
 
 /* Sidebar */
 [data-testid="stSidebarUserContent"] { padding-top: 0.25rem; }
 [data-testid="stSidebarHeader"] { height: 2.25rem; padding-top: 0.75rem; padding-bottom: 0; }
 section[data-testid="stSidebar"] hr { margin: 0.7rem 0 !important; border-color: var(--ad-line); }
-.sb-brand { font-size:1.3rem; font-weight:750; color:var(--ad-ink); line-height:1.2; }
+.sb-brand { font-family:var(--ad-serif); font-size:1.45rem; font-weight:500; color:var(--ad-ink); line-height:1.2; }
 .sb-tag { color:var(--ad-muted); font-size:0.82rem; margin-top:2px; }
 .sb-section { font-size:0.72rem; font-weight:750; letter-spacing:0.06em; text-transform:uppercase;
               color:var(--ad-accent); margin:2px 0 8px 0; }
 .tiles { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:8px; }
-.tile { background:#fff; border:1px solid var(--ad-line); border-radius:8px; padding:6px 8px; text-align:center; }
-.tile .n { font-size:1.55rem; font-weight:750; color:var(--ad-ink); line-height:1.15; }
+.tile { background:var(--ad-card); border:1px solid var(--ad-line); border-radius:8px; padding:6px 8px; text-align:center; }
+.tile .n { font-family:var(--ad-serif); font-size:1.65rem; font-weight:500; color:var(--ad-ink); line-height:1.15; }
 .tile .l { font-size:0.72rem; color:var(--ad-muted); font-weight:600; line-height:1.2; }
 .tile.alert { border-color:#e06c70; background:#fff5f5; }
 .tile.alert .n { color:#9b1419; }
@@ -425,11 +431,12 @@ with st.sidebar:
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 
-PRINCIPLES = [("Metadata-only", "#1f4fd8"), ("Unknown stays UNKNOWN", "#d9a93a"),
+PRINCIPLES = [("Metadata-only", "#3070b3"), ("Unknown stays UNKNOWN", "#d9a93a"),
               ("No false merges", "#ea9450"), ("Consent-gated linking", "#2f9e5a")]
 st.markdown(
-    '<div class="hero"><div class="hero-title">AutoDiscover: <span class="accent">Zero-Touch AI '
-    'Onboarding &amp; Passports</span></div><div class="pills">'
+    '<div class="hero"><div><div class="hero-eyebrow">Forkit AI Hackathon · AI governance</div>'
+    '<div class="hero-title">AutoDiscover: <span class="accent">Zero-Touch AI '
+    'Onboarding &amp; Passports</span></div></div><div class="pills">'
     + "".join(f'<span class="pill" style="--pill-dot:{dot}">{html.escape(t)}</span>' for t, dot in PRINCIPLES)
     + "</div></div>",
     unsafe_allow_html=True,
