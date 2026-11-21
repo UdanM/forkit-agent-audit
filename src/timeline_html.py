@@ -92,7 +92,7 @@ _FCSS = """
 .fl div.r{display:grid;grid-template-columns:96px 74px minmax(0,1fr) auto;gap:12px;align-items:baseline;
   padding:10px 16px;border-top:1px solid #232B47;font-size:14px}
 .fl div.r:first-child{border-top:0}
-.fl .sev{font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:999px;padding:2px 9px;color:var(--d);background:var(--g)}
+.fl .sev{justify-self:start;white-space:nowrap;font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:999px;padding:2px 9px;color:var(--d);background:var(--g)}
 .fl .id{font-family:"JetBrains Mono",Consolas,monospace;font-size:12.5px;color:#B1BBDA}
 .fl .t b{font-weight:600}.fl .t span{display:block;font-size:12.5px;color:#B1BBDA;margin-top:2px}
 .fl .rec{font-family:"JetBrains Mono",Consolas,monospace;font-size:12px;color:#B1BBDA;text-align:right}

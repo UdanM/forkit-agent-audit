@@ -272,15 +272,17 @@ def sidebar_section(title: str) -> None:
 
 
 DEMO_HINTS = {
-    1: "Click **Scan**, point at the [REDACTED] card and the disk check, then open **Passports**.",
-    2: "Point at the same-name note and the UNKNOWN labels, mint all three, then click **Simulate Restart** in the sidebar.",
-    3: "Toggle **Load v2 Config Update** in the sidebar, show the diff and why access mode is UNKNOWN, then open **Event review**.",
-    4: "Pick evt-0002 and click Link without consent (blocked), then tick consent and link (MISSING_APPROVAL + INCIDENT). "
+    1: "Click **Scan for AI tools**, point at the [REDACTED] card and the disk check, then open **Passports**.",
+    2: "Point at the same-name note and the UNKNOWN labels, click **Register tool** on all three, then click "
+       "**Simulate app restart** in the sidebar.",
+    3: "Turn on **Simulate a settings edit** in the sidebar, show the diff and why access mode is UNKNOWN, then open **Event review**.",
+    4: "Pick evt-0002 and click **Link action to tool** without consent (blocked), then tick consent and link it "
+       "(no approval on file, so an incident is recorded). "
        "Then evt-0003 on the filesystem-mcp passport (blocked). evt-0004 names only `postgres-mcp`, which two "
-       "configs share, so it is ambiguous: record it for review instead. Then open **Map**.",
+       "configs share, so it is ambiguous: keep it for human review instead. Then open **Map**.",
     5: "Walk the top diagram once, then read the evt-0002 row of the live map from left to right.",
-    6: "Click **Save Log Checkpoint**, read the helper's delegated write to the protected file, then click "
-       "**Simulate Log Tampering**: the rewritten log raises a critical finding.",
+    6: "Click **Save log checkpoint**, read the helper's delegated write to the protected file, then click "
+       "**Simulate log tampering**: the rewritten log raises a critical finding.",
 }
 
 
@@ -385,6 +387,31 @@ def run_discovery() -> None:
     refresh_policies()
 
 
+def demo_setup() -> None:
+    """One click to a ready demo: original settings, a fresh scan, and every sample tool registered."""
+    if st.session_state.get("v2_active"):
+        st.session_state.v2_active = False
+        restore_live_configs(v2=False)
+    run_discovery()
+    eng_ = engine()
+    for c in st.session_state.candidates:
+        if c["passport_id"] not in eng_.passports():
+            eng_.mint_passport(c)
+    run_discovery()
+    st.session_state.restart_proof = None
+    st.session_state.flash = ("success", f"Demo ready: {len(st.session_state.candidates)} tools found and registered. "
+                              "Open any tab, or link an action in **Event review**.")
+
+
+def empty_state(message: str, key: str) -> None:
+    """An empty tab explains itself and, in the demo, offers the one-click setup."""
+    st.info(message)
+    if demo_mode():
+        if st.button("Set up the demo in one click", key=f"setup_{key}", type="primary"):
+            demo_setup()
+            st.rerun()
+
+
 def init_state() -> None:
     defaults = {
         "candidates": [],
@@ -452,8 +479,8 @@ with st.sidebar:
 
     # ── Section 1: Discovery Mode ──
     sidebar_section("Source")
-    mode_labels = {"demo": "Demo fixtures (default)", "real": "Scan Real Local Machine",
-                   "agents": "Live agents (captured runs)"}
+    mode_labels = {"demo": "Demo with sample data", "real": "Scan this computer",
+                   "agents": "Recorded agent runs"}
     picked = st.radio("Discovery mode", list(mode_labels), format_func=mode_labels.get,
                       index=list(mode_labels).index(st.session_state.mode), label_visibility="collapsed")
     if picked != st.session_state.mode:
@@ -469,8 +496,8 @@ with st.sidebar:
             "registry in `data/local/`. Usernames are masked as `~` and secrets are redacted."
             if picked == "real" else
             "Live agents: real agent runs captured by the AutoDiscover tap (local) and collector (cloud n8n). "
-            "Click **Run Agent Scenarios** in the sidebar, then follow the tabs. Results go to `data/agents/`."
-            if picked == "agents" else "Back to the deterministic demo fixtures.",
+            "Click **Run agent scenarios** in the sidebar, then follow the tabs. Results go to `data/agents/`."
+            if picked == "agents" else "Back to the demo with sample data.",
         )
         st.rerun()
 
@@ -478,7 +505,7 @@ with st.sidebar:
     st.divider()
     sidebar_section("Demo")
     if agents_mode():
-        if st.button("Run Agent Scenarios", width="stretch", type="primary",
+        if st.button("Run agent scenarios", width="stretch", type="primary",
                      help="Runs five scripted agent scenarios (no LLM) and captures every tool call."):
             from demo.agents.run_scenarios import run_all
             with st.spinner("Running agents through the tap and the collector..."):
@@ -490,18 +517,22 @@ with st.sidebar:
             if tab:
                 st.session_state.active_tab = tab
             run_discovery()
-            st.session_state.flash = ("success", f"Agents ran. {run['events']} tool calls captured and minted "
-                                      "passports are ready. Link the events in **Event review**.")
+            st.session_state.flash = ("success", f"Agents ran. {run['events']} tool calls captured and the "
+                                      "tools are registered. Link the events in **Event review**.")
             st.rerun()
     elif real_mode():
-        if st.button("Clear Local Scan Registry", width="stretch", type="primary"):
+        if st.button("Clear this computer's results", width="stretch", type="primary"):
             for f in LOCAL_DATA.glob("*.json"):
                 f.unlink()
             st.session_state.clear()
             st.session_state.mode = "real"
             st.session_state.flash = ("success", "Local scan registry in `data/local/` cleared.")
             st.rerun()
-    elif st.button("1-Click Reset Demo State", width="stretch", type="primary"):
+    elif st.button("Set up the demo in one click", width="stretch", type="primary",
+                   help="Scans the sample settings files and registers all three tools, so every tab has data."):
+        demo_setup()
+        st.rerun()
+    if demo_mode() and st.button("Start the demo over", width="stretch"):
         for f in DATA.glob("*.json"):
             f.unlink()
         shutil.rmtree(LIVE, ignore_errors=True)
@@ -509,10 +540,11 @@ with st.sidebar:
         shutil.rmtree(DATA / "audit-archive.git", ignore_errors=True)
         st.session_state.clear()
         restore_live_configs(v2=False)
-        st.session_state.flash = ("success", "Demo reset: registry, links, incidents and changes cleared.")
+        st.session_state.flash = ("success", "Demo cleared. Click **Set up the demo in one click**, or start with **Scan for AI tools**.")
         st.rerun()
 
-    if st.button("Simulate Restart", width="stretch"):
+    if st.button("Simulate app restart", width="stretch",
+                 help="Forgets everything in memory and scans again. Registered tools must come back with the same IDs."):
         before = {c["passport_id"] for c in st.session_state.candidates}
         v2 = st.session_state.v2_active
         mode = st.session_state.mode
@@ -534,9 +566,9 @@ with st.sidebar:
         st.rerun()
 
     v2_toggle = False if not demo_mode() else st.toggle(
-        "Load v2 Config Update",
+        "Simulate a settings edit",
         value=st.session_state.v2_active,
-        help="Simulates editing claude_desktop_config.json in place with the v2 contents.",
+        help="Swaps in an edited copy of the sample Claude Desktop settings (v2), as if someone changed a tool."
     )
     if demo_mode() and v2_toggle != st.session_state.v2_active:
         st.session_state.v2_active = v2_toggle
@@ -549,14 +581,14 @@ with st.sidebar:
         if v2_toggle and not fs_minted:
             st.session_state.flash = (
                 "warning",
-                "v2 config loaded, but filesystem-mcp has no passport yet, so there is nothing to diff against. "
-                "For the demo: turn v2 off, mint filesystem-mcp in **Passports**, then turn v2 on again.",
+                "Settings edit loaded, but filesystem-mcp is not registered yet, so there is nothing to diff against. "
+                "For the demo: turn the edit off, register filesystem-mcp in **Passports**, then turn it on again.",
             )
         else:
             st.session_state.flash = (
                 "warning" if v2_toggle else "info",
-                "v2 config loaded: filesystem-mcp args changed on disk. See **Changes**."
-                if v2_toggle else "Reverted to the original v1 config.",
+                "Settings edit loaded: filesystem-mcp's arguments changed on disk. See **Changes**."
+                if v2_toggle else "Back to the original settings.",
             )
         st.rerun()
 
@@ -580,13 +612,13 @@ with st.sidebar:
     integ, scan = audit["integrity"], audit["secret_scan"]
     st.markdown(
         '<div class="metrics">'
-        f'<div class="mrow"><span>Confirmed passports</span><b>{len(passports)}</b></div>'
-        f'<div class="mrow"><span>Linked events</span><b>{len(eng.linked_events())}</b></div>'
+        f'<div class="mrow"><span>Registered tools</span><b>{len(passports)}</b></div>'
+        f'<div class="mrow"><span>Linked actions</span><b>{len(eng.linked_events())}</b></div>'
         f'<div class="mrow{" alert" if n_incidents else ""}"><span>Incidents</span><b>{n_incidents}</b></div>'
         '</div><div class="metrics">'
-        f'<div class="mrow"><span>Integrity · {integ["passports_checked"]} passports</span>'
+        f'<div class="mrow"><span>IDs re-checked · {integ["passports_checked"]}</span>'
         f'{status_badge(integ["status"])}</div>'
-        f'<div class="mrow"><span>Secret scan · {len(scan["files_scanned"])} file{"" if len(scan["files_scanned"]) == 1 else "s"}</span>'
+        f'<div class="mrow"><span>No secrets stored · {len(scan["files_scanned"])}</span>'
         f'{status_badge(scan["status"])}</div></div>',
         unsafe_allow_html=True,
     )
@@ -598,7 +630,7 @@ with st.sidebar:
     except PermissionError as exc:
         st.error(f"{exc}. Fix the leak, then the download returns.")
     else:
-        st.download_button("Download Governance Audit Report", bundle, file_name=f"{base}.zip",
+        st.download_button("Download audit report (ZIP)", bundle, file_name=f"{base}.zip",
                            mime="application/zip", width="stretch", type="primary")
         c_json, c_md = st.columns(2)
         c_json.download_button("JSON", json.dumps(audit, indent=2, sort_keys=True), file_name=f"{base}.json",
@@ -614,7 +646,7 @@ with st.sidebar:
             st.caption("Every link, incident, review item, drift record and activity finding, committed to a "
                        f"separate bare Git repository at `{store_label()}/audit-archive.git`. Earlier records can "
                        "never change without verification failing.")
-            if st.button("Archive New Records", width="stretch"):
+            if st.button("Save new records to the archive", width="stretch"):
                 try:
                     res = eng.archive_to_git(archive_repo, raw_secret_values=raw_secret_values())
                     st.session_state.flash = ("success", f"Archive: +{res['added']} record(s), "
@@ -755,7 +787,7 @@ if st.session_state.flash:
 proof = st.session_state.restart_proof
 if proof and proof["registry_count"] == 0:
     st.info("Restart simulated, but the registry is empty so there is nothing to recognize yet. "
-            "Scan in **Tools**, mint in **Passports**, then click **Simulate Restart** again.")
+            "Scan in **Tools**, register in **Passports**, then click **Simulate app restart** again.")
 elif proof:
     same = proof["after"] == proof["recognized"] and (not proof["before"] or proof["before"] == proof["after"])
     keys = [(p["source_path"], p["tool_name"]) for p in eng.passports().values()]
@@ -769,7 +801,7 @@ elif proof:
     else:
         st.warning(
             f"Restart re-scan: {len(proof['recognized'])}/{len(proof['after'])} tools already have passports "
-            f"({dupes} duplicates). Mint the rest in **Passports** to see them recognized next time."
+            f"({dupes} duplicates). Register the rest in **Passports** to see them recognized next time."
         )
     with st.expander("Passport IDs before vs. after restart"):
         st.json({"before_restart": proof["before"], "after_restart": proof["after"]})
@@ -802,15 +834,15 @@ with tab1:
                     value=True, key="include_clients",
                     help="Each gets its own passport type, so a CLI named claude never merges with an MCP "
                          "server named claude. Nothing is launched.")
-        scan_label = "Scan Real Local Machine"
+        scan_label = "Scan this computer"
     elif agents_mode():
         st.caption("Scans the configs the agents ran with: "
                    + (", ".join(f"`configs/{p.name}`" for p in agent_config_paths())
-                      or "none yet. Click **Run Agent Scenarios** in the sidebar first."))
-        scan_label = "Scan Local MCP Configs"
+                      or "none yet. Click **Run agent scenarios** in the sidebar first."))
+        scan_label = "Scan for AI tools"
     else:
-        st.caption("Scans local MCP configs: " + ", ".join(f"`{c}`" for c in CONFIGS))
-        scan_label = "Scan Local MCP Configs"
+        st.caption("Reads two sample settings files: " + ", ".join(f"`{c}`" for c in CONFIGS))
+        scan_label = "Scan for AI tools"
     if st.button(scan_label, type="primary"):
         run_discovery()
         st.session_state.restart_proof = None
@@ -893,7 +925,7 @@ with tab1:
 # ── Passports ──────────────────────────────────────────────────────
 
 with tab2:
-    st.subheader("Review each server and issue its passport")
+    st.subheader("Review each tool and register it")
     tab_purpose(2)
     demo_hint(2)
     with st.expander("How the passport ID is calculated"):
@@ -906,7 +938,7 @@ with tab2:
                 "                         creator_name='UNKNOWN',\n"
                 "                         artifact_hash=sha256(source_path + tool_name + command))", language=None)
     if not candidates:
-        st.info("Scan in **Tools** first.")
+        empty_state("Nothing to register yet. Scan in **Tools** first.", key="passports")
     else:
         name_sources: dict[str, set[str]] = {}
         for c in candidates:
@@ -915,8 +947,8 @@ with tab2:
         if st.session_state.v2_active and any(
             c["source_path"] == CLAUDE and c["passport_id"] not in passports for c in candidates
         ):
-            st.warning("You are on the edited **v2** config. Minting now records v2 as the baseline, so **Changes** will "
-                       "have no diff to show. For the demo, turn v2 off in the sidebar first and mint on v1.")
+            st.warning("The **settings edit** is on. Registering now records the edited settings as the baseline, so **Changes** will "
+                       "have no diff to show. For the demo, turn the settings edit off in the sidebar first.")
 
         cols = st.columns(len(candidates))
         for col, c in zip(cols, candidates, strict=True):
@@ -926,13 +958,13 @@ with tab2:
             ):
                 collision = len(name_sources[c["tool_name"]]) > 1
                 minted = c["passport_id"] in passports
-                status = badge("CONFIRMED", "ok") if minted else badge("CANDIDATE", "neutral")
+                status = badge("REGISTERED", "ok") if minted else badge("NOT REGISTERED YET", "neutral")
                 warn = (
                     '<div class="note-warn">Same name as another tool, different provenance. '
                     'Kept as a separate passport.</div>'
                     if collision else ""
                 )
-                changed = badge("METADATA CHANGED", "bad") if c.get("metadata_changed") else ""
+                changed = badge("SETTINGS CHANGED", "bad") if c.get("metadata_changed") else ""
                 st.markdown(
                     f'<div class="card-body">'
                     f'<div class="card-head"><h4>{html.escape(c["tool_name"])}</h4><span>{changed}{status}</span></div>'
@@ -952,14 +984,14 @@ with tab2:
                 )
                 st.space("stretch")                     # pushes the action to one shared baseline
                 if minted:
-                    st.button("Passport minted", key=f"mint_{c['passport_id']}", disabled=True,
+                    st.button("Registered ✓", key=f"mint_{c['passport_id']}", disabled=True,
                               width="stretch")
-                elif st.button("Single-Click Mint Stable ID", key=f"mint_{c['passport_id']}",
+                elif st.button("Register tool", key=f"mint_{c['passport_id']}",
                                type="primary", width="stretch"):
                     pid = eng.mint_passport(c)
                     refresh_policies()
                     st.session_state.restart_proof = None  # stale once the registry changes
-                    st.session_state.flash = ("success", f"Minted {c['tool_name']} → {pid}")
+                    st.session_state.flash = ("success", f"Registered {c['tool_name']}. Passport ID {pid[:12]}…")
                     st.rerun()
 
         if any(len(s) > 1 for s in name_sources.values()):
@@ -973,25 +1005,25 @@ with tab2:
 # ── Changes ─────────────────────────────────────────────────────
 
 with tab3:
-    st.subheader("Config changes and policy findings")
+    st.subheader("Settings changes and rule checks")
     tab_purpose(3)
     demo_hint(3)
     changed = [c for c in candidates if c.get("metadata_changed")]
     if real_mode():
         if not changed:
-            st.info("No config drift on confirmed passports. To see it, mint a tool in **Passports**, edit that tool's "
+            st.info("No settings changes on registered tools. To see one, register a tool in **Passports**, edit that tool's "
                     "args in your MCP config, then re-scan in **Tools**.")
     elif agents_mode():
         if not changed:
             st.info("Scenario E removes `--read-only` from the Claude Desktop agent config during the run. Click "
-                    "**Run Agent Scenarios** in the sidebar and the change shows up here, on the same passport.")
+                    "**Run agent scenarios** in the sidebar and the change shows up here, on the same passport.")
     elif not st.session_state.scanned:
-        st.info("Run discovery in **Tools** and mint `filesystem-mcp` in **Passports** first.")
+        empty_state("Nothing has changed yet. Scan in **Tools** and register `filesystem-mcp` in **Passports** first.", key="changes")
     elif not st.session_state.v2_active:
-        st.info("Toggle **Load v2 Config Update** in the sidebar to simulate an in-place config edit.")
+        st.info("Turn on **Simulate a settings edit** in the sidebar to see what happens when someone edits a tool.")
     elif not changed:
-        st.info("v2 is loaded, but no confirmed passport changed. Mint `filesystem-mcp` in **Passports** first, "
-                "then toggle v2 off and on again.")
+        st.info("The settings edit is on, but no registered tool changed. Register `filesystem-mcp` in **Passports** "
+                "first, then turn the edit off and on again.")
     for c in changed:
         stored = eng.passports()[c["passport_id"]]
         lines = []
@@ -1012,17 +1044,17 @@ with tab3:
             f'<span class="mono">({short(c["passport_id"])})</span></h4>'
             f'<p style="margin:2px 0 8px 0">Someone edited this tool\'s settings. The tool keeps its passport, '
             f'and the change waits for a person to review it.</p>'
-            f'{badge("Same passport_id", "ok")}{badge("PENDING_REVIEW", "warn")}'
+            f'{badge("SAME PASSPORT ID", "ok")}{badge("WAITING FOR REVIEW", "warn")}'
             f'<div class="kv"><b>Fingerprint</b><span class="mono">{stored["config_hash"][:12]}… → '
             f'{c["config_hash"][:12]}…</span></div>'
             f'<div style="margin-top:8px">{"".join(lines)}</div>{reason}'
-            f'<div class="muted" style="margin-top:10px">The confirmed passport is unchanged. Drift is recorded in '
+            f'<div class="muted" style="margin-top:10px">The registered passport is unchanged. The change is recorded in '
             f'<span class="mono">{store_label()}/metadata_changes.json</span>.</div></div>',
             unsafe_allow_html=True,
         )
     log = eng.metadata_changes()
     if log:
-        with st.expander(f"metadata_changes.json ({len(log)})"):
+        with st.expander(f"Raw change log: metadata_changes.json ({len(log)})"):
             st.json(log)
 
     st.markdown("#### Rule checks")
@@ -1030,7 +1062,7 @@ with tab3:
                "the facts it used. Missing facts are never guessed.")
     findings = eng.policy_findings()
     if not findings:
-        st.info("No findings yet. Scan in **Tools** to evaluate the rules.")
+        st.info("No findings yet. Scan in **Tools** to check the rules.")
     else:
         order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         counts = {sev: sum(f["severity"] == sev for f in findings) for sev in order}
@@ -1057,13 +1089,14 @@ with tab4:
     passports = eng.passports()
     if real_mode():
         st.info("Event linking runs on the demo's runtime event fixtures, whose sources point at the fixture "
-                "configs. Switch to **Demo fixtures** in the sidebar to link events.")
+                "configs. Switch to **Demo with sample data** in the sidebar to link events.")
     elif agents_mode() and not events:
-        st.info("No captured agent actions yet. Click **Run Agent Scenarios** in the sidebar: a scripted LangGraph "
+        st.info("No captured agent actions yet. Click **Run agent scenarios** in the sidebar: a scripted LangGraph "
                 "agent works through a real MCP file server behind the AutoDiscover tap, and an n8n workflow "
                 "reports its actions to the collector.")
     elif not passports:
-        st.info("No passports yet. Scan in **Tools** and mint at least `filesystem-mcp` in **Passports** before linking events.")
+        empty_state("No registered tools yet. Scan in **Tools** and register at least `filesystem-mcp` in **Passports** "
+                    "before linking actions to tools.", key="events")
     else:
         scen_of: dict[str, str] = {}
         if agents_mode():
@@ -1078,7 +1111,7 @@ with tab4:
                                 "filed under the passport its own source names; nothing is guessed.")
                     all_ok = st.checkbox(f"I grant explicit consent to link all {len(unlinked)} captured events",
                                          key="consent_all_agents")
-                    if st.button("Link All Captured Events", width="stretch"):
+                    if st.button("Link all captured actions", width="stretch"):
                         by_src = {(p["source_path"], p["tool_name"]): pid for pid, p in passports.items()}
                         try:
                             done = [eng.link_event(e, by_src[(e["source"]["config_path"], e["source"]["server_name"])],
@@ -1099,7 +1132,7 @@ with tab4:
                 + f'{e["source"].get("server_name", UNKNOWN)} · {e["tool_call"]} · {e["result"]}'
                 for e in events
             }
-            ev_id = st.selectbox("Runtime event", list(ev_labels), format_func=ev_labels.get, key="ev_select")
+            ev_id = st.selectbox("Action a tool took (runtime event)", list(ev_labels), format_func=ev_labels.get, key="ev_select")
             event = next(e for e in events if e["event_id"] == ev_id)
             with st.expander("Raw event record"):
                 st.json(event)
@@ -1112,18 +1145,18 @@ with tab4:
             else:
                 match = pids[0]
                 title = {"ambiguous": "Ambiguous source", "no_source_context": "No source context",
-                         "no_match": "Passport not minted yet"}[att["status"]]
+                         "no_match": "Tool not registered yet"}[att["status"]]
                 st.warning(f"**{title}.** {att['reason']} "
-                           + ("Mint it in **Passports** to link this event. "
+                           + ("Register it in **Passports** to link this action. "
                               if att["status"] == "no_match" else "")
                            + "Linking it to a passport will be blocked by the engine.")
                 if att["status"] != "no_match":
                     with st.container(border=True):
                         st.markdown("**Keep it for review, unassigned.** The actor stays UNKNOWN until stronger "
                                     "evidence appears.")
-                        rv_ok = st.checkbox("I grant explicit consent to record this event for review",
+                        rv_ok = st.checkbox("I give consent to keep this action for review",
                                             key=f"review_consent_{ev_id}")
-                        if st.button("Record for Review", key=f"review_{ev_id}", width="stretch"):
+                        if st.button("Keep for human review", key=f"review_{ev_id}", width="stretch"):
                             try:
                                 eng.record_for_review(event, user_consent=rv_ok)
                                 st.session_state.last_error = None
@@ -1134,10 +1167,10 @@ with tab4:
                 if queued:
                     st.info(f"In the review queue as `{queued[0]['review_id']}` · actor UNKNOWN · "
                             f"{len(queued[0]['candidate_passport_ids'])} candidate passport(s).")
-            target = st.selectbox("File under passport", pids, index=pids.index(match),
+            target = st.selectbox("Tool it belongs to", pids, index=pids.index(match),
                                   format_func=labels.get, key=f"target_{ev_id}")
-            consent = st.checkbox("I grant explicit consent to link this event", key=f"consent_{ev_id}")
-            if st.button("Link Event", type="primary", width="stretch"):
+            consent = st.checkbox("I give consent to link this action to the tool", key=f"consent_{ev_id}")
+            if st.button("Link action to tool", type="primary", width="stretch"):
                 try:
                     st.session_state.last_link = eng.link_event(event, target, user_consent=consent)
                     refresh_policies()
@@ -1149,12 +1182,15 @@ with tab4:
                 st.rerun()
 
         if st.session_state.last_error:
-            st.error(f"Link blocked by engine. {st.session_state.last_error}")
+            st.error(f"Blocked, nothing was linked. {st.session_state.last_error}")
 
         link = st.session_state.last_link
         if link:
-            appr = badge(APPROVED, "ok") if link["approval_status"] == APPROVED else badge(MISSING_APPROVAL, "bad")
+            appr = badge("APPROVED", "ok") if link["approval_status"] == APPROVED else badge("NO APPROVAL ON FILE", "bad")
             src = link["source"] if isinstance(link["source"], dict) else {}
+            rule_titles = {r["rule_id"]: r["title"] for r in eng.policies()}
+            policy_html = "".join(f'{badge(r, "bad")}<span class="muted">{html.escape(rule_titles.get(r, ""))}</span> '
+                                  for r in link.get("policy_flags", [])) or badge("no rule broken", "ok")
             st.markdown(
                 f'<div class="card audit"><h4>Audit record · {html.escape(link["link_id"])}</h4>'
                 f'<div class="kv"><b>Event</b><span class="mono">{html.escape(link["event_id"])} · '
@@ -1163,14 +1199,15 @@ with tab4:
                 f'{html.escape(src.get("config_path", UNKNOWN))} · {html.escape(src.get("server_name", UNKNOWN))}</span></div>'
                 f'<div class="kv"><b>Timestamp</b><span class="mono">{html.escape(link["timestamp"])}</span></div>'
                 f'<div class="kv"><b>Passport</b><span class="mono">{short(link["passport_id"])}</span></div>'
-                f'<div class="kv"><b>Approval</b>{appr} {value_badge(link["approval_id"])} '
+                f'<div class="kv"><b>Approval</b>{appr} '
+                f'{"" if link["approval_id"] == UNKNOWN else value_badge(link["approval_id"])} '
                 f'<span class="muted">{"Approved in" if link["approval_status"] == APPROVED else "No approval on file in"} '
                 f'{html.escape(eng.approvals_path.relative_to(ROOT).as_posix())}</span></div>'
                 f'<div class="kv"><b>Runtime consent</b>{value_badge(link["runtime_consent_id"])}'
                 f'{" <span class=muted>The event log does not say whether the user agreed.</span>" if link["runtime_consent_id"] == UNKNOWN else ""}</div>'
                 f'<div class="kv"><b>Link consent</b>{badge("GRANTED", "ok")} <span class="muted">You ticked the consent box.</span></div>'
                 f'<div class="kv"><b>Policy</b>'
-                f'{"".join(badge(r, "bad") for r in link.get("policy_flags", [])) or badge("no rule violated", "ok")}'
+                f'{policy_html}'
                 f'</div></div>',
                 unsafe_allow_html=True,
             )
@@ -1188,7 +1225,7 @@ with tab4:
                         f'<div class="kv"><b>Attempted</b><span class="mono">{html.escape(inc["tool_call"])} → '
                         f'{html.escape(str(inc["target"]))}</span> {badge(inc["result"].upper(), "bad")}</div>'
                         f'<div class="kv"><b>Expected</b>{badge(inc["expected_behavior"], "ok")}</div>'
-                        f'<div class="kv"><b>Approval</b>{badge(inc["approval_status"], "bad" if inc["approval_status"] != APPROVED else "ok")}</div>'
+                        f'<div class="kv"><b>Approval</b>{badge("APPROVED" if inc["approval_status"] == APPROVED else "NO APPROVAL ON FILE", "bad" if inc["approval_status"] != APPROVED else "ok")}</div>'
                         f'<div class="kv"><b>Timestamp</b><span class="mono">{html.escape(inc["timestamp"])}</span></div>'
                         f'<div class="muted" style="margin-top:8px">Written to <span class="mono">{store_label()}/incidents.json</span>.</div></div>',
                         unsafe_allow_html=True,
@@ -1197,17 +1234,19 @@ with tab4:
         st.divider()
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown(f"**Linked events** · `{store_label()}/linked_events.json`")
+            st.markdown(f"**Linked actions** · `{store_label()}/linked_events.json`")
             st.dataframe([{
-                "event": lk["event_id"], "passport": short(lk["passport_id"]), "tool_call": lk["tool_call"],
-                "timestamp": lk["timestamp"], "approval": lk["approval_status"], "flags": ", ".join(lk["flags"]) or "none",
-            } for lk in eng.linked_events()], width="stretch", hide_index=True)
+                "Event": lk["event_id"], "Passport": short(lk["passport_id"]), "Action": lk["tool_call"],
+                "Time": lk["timestamp"],
+                "Approval": "approved" if lk["approval_status"] == APPROVED else "no approval on file",
+                "Flags": ", ".join(f.lower().replace("_", " ") for f in lk["flags"]) or "none",
+            } for lk in eng.linked_events()] or [{"Event": "None linked yet"}], width="stretch", hide_index=True)
         with c2:
-            st.markdown(f"**Incident log** · `{store_label()}/incidents.json`")
+            st.markdown(f"**Incidents** · `{store_label()}/incidents.json`")
             st.dataframe([{
-                "incident": i["incident_id"], "tool": i["tool_name"], "tool_call": i["tool_call"],
-                "timestamp": i["timestamp"], "result": i["result"],
-            } for i in eng.incidents()], width="stretch", hide_index=True)
+                "Incident": i["incident_id"], "Tool": i["tool_name"], "Action": i["tool_call"],
+                "Time": i["timestamp"], "Result": i["result"],
+            } for i in eng.incidents()] or [{"Incident": "None yet"}], width="stretch", hide_index=True)
 
 # ── Map ─────────────────────────────────────────────────────────
 
@@ -1233,15 +1272,15 @@ with tab5:
                 for p in set(map_passports) | {c["passport_id"] for c in st.session_state.candidates}}
     live = live_map_html(store, candidates=st.session_state.candidates, focus=focus, found_on=found_on)
     if live is None:
-        st.info("Nothing to map yet. Scan in **Tools** (and mint in **Passports**) and the live map of configs, passports, "
-                "events and incidents appears here.")
+        empty_state("Nothing to map yet. Scan in **Tools** and register tools in **Passports**, and the live map "
+                    "of settings files, passports, actions and incidents appears here.", key="map")
     else:
         with st.container(border=True, key="graphframe_live"):
             st.html(live)
         st.caption("Read each row left to right: the config file that declares a tool, the passport issued for it, "
                    "runtime events linked to that passport, and any incident they caused. Open checks are drift and "
                    "policy findings still waiting for a reviewer. Red means no approval or an incident. A dashed "
-                   "passport has not been issued yet.")
+                   "box means the tool is not registered yet.")
 
 
 # ── 06 Activity Timeline ──────────────────────────────────────────────────────
@@ -1263,25 +1302,25 @@ with tab6:
     label, obs_log, rep_log = activity_sources()
     if obs_log is None:
         if agents_mode():
-            st.info("No pilot log yet. Click **Run Agent Scenarios** in the sidebar: the delegated-helper pilot "
+            st.info("No pilot log yet. Click **Run agent scenarios** in the sidebar: the delegated-helper pilot "
                     "writes an observer log here.")
         else:
             st.info("Point AutoDiscover at an observer log to build the timeline. The format is documented in "
                     "AUTODISCOVER_README.md (Activity timeline).")
     else:
         b1, b2, b3 = st.columns(3)
-        if b1.button("Save Log Checkpoint", width="stretch",
+        if b1.button("Save log checkpoint", width="stretch",
                      help="Remembers LENGTH:SHA256 of the log as it is now. Later reads must start with the same bytes."):
             cp = eng.save_log_checkpoint(label, obs_log)
             st.session_state.flash = ("success", f"Checkpoint saved: `{cp[:28]}...`" if cp else "Log is empty.")
             st.rerun()
         if demo_mode():
-            if b2.button("Simulate Log Tampering", width="stretch",
+            if b2.button("Simulate log tampering", width="stretch",
                          help="Rewrites one earlier record in the demo copy, as an agent covering its tracks would."):
                 text = obs_log.read_text(encoding="utf-8")
                 obs_log.write_text(text.replace('"protected": true', '"protected": null', 1), encoding="utf-8")
                 st.rerun()
-            if b3.button("Restore Original Log", width="stretch"):
+            if b3.button("Restore original log", width="stretch"):
                 shutil.copy(ACTIVITY_FIXTURES / "observer.jsonl", obs_log)
                 st.rerun()
         tl = eng.activity_timeline(label, obs_log, rep_log)
