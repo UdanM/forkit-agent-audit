@@ -798,7 +798,7 @@ elif proof:
 # Keyed, stateful tabs: clicking a button inside a tab keeps you on that tab.
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
     ["01 Discover", "02 Identity & Review", "03 Drift & Governance", "04 Linking & Incidents",
-     "05 Provenance Map", "06 Activity Timeline"],
+     "05 Provenance Map", "06 Timeline"],
     key="active_tab",
     on_change="rerun",
 )
@@ -1337,8 +1337,10 @@ with tab6:
             "delegated_by": r["delegated_by"] or "", "access": r["access"], "tool": r["tool"],
             "started": r["started_at"], "pid": r["pid"] if r["pid"] is not None else "",
         } for r in tl["runs"]], width="stretch", hide_index=True, column_config={
+            "run": col("Run"), "label": col("Label"),
             "agent": col("Agent ID", help="From deployment + agent_id + instance_id on the observer's run record."),
-            "delegated_by": col("Delegated by"),
+            "delegated_by": col("Delegated by"), "access": col("Access"), "tool": col("Tool"),
+            "started": col("Started"), "pid": col("PID"),
         })
         st.markdown("**Actions**")
         st.dataframe([{
@@ -1348,7 +1350,10 @@ with tab6:
             "approval": {True: "yes", False: "no"}.get(a.get("approval"), UNKNOWN),
             "protected": {True: "yes", False: "no"}.get(a.get("protected"), UNKNOWN),
         } for a in tl["actions"]], width="stretch", hide_index=True, column_config={
-            "why": col("Actor evidence"), "path_or_target": col("Path / target", width="large"),
+            "record": col("Record"), "time": col("Time"), "actor": col("Actor"), "why": col("Actor evidence"),
+            "initiated_by": col("Initiated by"), "action": col("Action"),
+            "path_or_target": col("Path / target", width="large"), "approval": col("Approval"),
+            "protected": col("Protected"),
         })
         if tl["shared_files"]:
             st.markdown("**Files touched by more than one actor** · overlap is a lead for review, not proof")

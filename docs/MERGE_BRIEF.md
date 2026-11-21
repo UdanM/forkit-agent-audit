@@ -95,7 +95,7 @@ Main engine entry points: `discover_tools`, `scan_local_machine`, `derive_passpo
 
 ## 3. Tests and CI
 
-*Updated after the merge with forkit-agent-audit:* 158 AutoDiscover tests (532 with Forkit Core's own), see
+*Updated after the merge with forkit-agent-audit:* 158 AutoDiscover tests (534 with Forkit Core's own), see
 the README for the per-file list.
 
 
