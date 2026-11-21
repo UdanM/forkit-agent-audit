@@ -35,6 +35,7 @@ _C = {
     "grey_bg": "#f5f3ef",
 }
 _SEV_ORDER = ("critical", "high", "medium", "low")
+_INCIDENT_TYPES = {"OUT_OF_EXPECTED_BEHAVIOR": "Out of expected behavior"}
 
 
 def dot_escape(value: Any, limit: int = MAX_LABEL) -> str:
@@ -224,7 +225,7 @@ def live_map_dot(
                 intact = False
             verdict = "integrity PASS" if intact else "integrity FAIL"
             color = c["accent"] if intact else c["red"]
-            out.append(f'  {nid} [label="{_lbl("🔒 passport " + pid[:12] + "…", verdict)}", '
+            out.append(f'  {nid} [label="{_lbl("Passport " + pid[:12], verdict)}", '
                        f'fillcolor="white", fontcolor="{c["ink"] if intact else c["red"]}", color="{color}", penwidth=2];')
             out.append(f'  {nid}_tool -> {nid} [color="{c["accent"]}", penwidth=1.4];')
         else:
@@ -270,7 +271,7 @@ def live_map_dot(
             out.append(f'  {nid} -> {eid} [color="{line}"];')
             inc = next((i for i in s["incidents"] if i.get("incident_id") == link.get("incident_id")), None)
             if inc:
-                out.append(f'  {eid}_inc [label="{_lbl("🚨 INCIDENT", inc.get("type", UNKNOWN), inc.get("incident_id"))}", '
+                out.append(f'  {eid}_inc [label="{_lbl("Incident", _INCIDENT_TYPES.get(str(inc.get("type")), inc.get("type", UNKNOWN)), inc.get("incident_id"))}", '
                            f'shape=box, fillcolor="white", fontcolor="{c["red"]}", color="#be123c", penwidth=2.2];')
                 out.append(f'  {eid} -> {eid}_inc [color="{c["red"]}", penwidth=2];')
     out.append("}")

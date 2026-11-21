@@ -99,7 +99,7 @@ def test_candidates_only_are_drawn_dashed(ws: Path) -> None:
     dot = live_map_dot(ws / "data", candidates=cands)
     assert_valid_dot(dot)
     assert dot.count("not minted yet") == 3
-    assert "🔒 passport" not in dot
+    assert "Passport " not in dot
 
 
 # ── Live map content ───────────────────────────────────────────────────────────
@@ -118,14 +118,14 @@ def test_live_map_keeps_same_name_tools_in_separate_config_clusters(ws: Path) ->
 
     pg = [ids[(CLAUDE, "postgres-mcp")], ids[(CURSOR, "postgres-mcp")]]
     for pid in pg:
-        assert f"🔒 passport {pid[:12]}…" in dot
+        assert f"Passport {pid[:12]}" in dot
     assert dot.count("integrity PASS") == 3
 
 
 def test_events_link_to_the_right_passport_with_incident_and_missing_approval(ws: Path) -> None:
     eng, ids, cands = full_demo_flow(ws)
     dot = live_map_dot(eng.data_dir, candidates=cands)
-    node = {pid: m for m, pid in re.findall(r'^  (n\d+) \[label="🔒 passport ([0-9a-f]{12})…', dot, flags=re.M)}
+    node = {pid: m for m, pid in re.findall(r'^  (n\d+) \[label="Passport ([0-9a-f]{12})\\n', dot, flags=re.M)}
     fs_node = node[ids[(CLAUDE, "filesystem-mcp")][:12]]
     pg_node = node[ids[(CURSOR, "postgres-mcp")][:12]]
 
@@ -138,7 +138,7 @@ def test_events_link_to_the_right_passport_with_incident_and_missing_approval(ws
 
     e2 = event_node("evt-0002")
     assert re.search(rf"^  {e2} -> {e2}_inc \[", dot, flags=re.M)
-    assert "🚨 INCIDENT" in dot and "OUT_OF_EXPECTED_BEHAVIOR" in dot
+    assert "Incident\\nOut of expected behavior" in dot
     e2_line = next(line for line in dot.splitlines() if line.startswith(f"  {e2} ["))
     assert "MISSING_APPROVAL" in e2_line and "#fde6e6" in e2_line      # red styling
     e1_line = next(line for line in dot.splitlines() if line.startswith(f"  {event_node('evt-0001')} ["))
@@ -238,6 +238,6 @@ def test_store_dir_isolation_and_read_only(ws: Path) -> None:
     assert snapshot(ws / "data") == before
 
     assert "evt-0002" in demo_map and "evt-0002" not in local_map
-    assert local_map.count("🔒 passport") == 1
+    assert local_map.count("Passport ") == 1
     assert "1 confirmed" in lifecycle_dot(ws / "data" / "local")
     assert "3 confirmed" in lifecycle_dot(ws / "data")
