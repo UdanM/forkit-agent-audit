@@ -1,29 +1,29 @@
-# Warm editorial theme for the AutoDiscover demo: ivory canvas, serif headings,
-# terracotta accent, TUM-blue for info. System fonts only (no web-font download,
+# Warm, minimal theme for the AutoDiscover demo: ivory canvas, serif headings,
+# terracotta accent, soft glass surfaces. System fonts only (no web-font download,
 # so it renders the same offline on the demo laptop).
 
 [theme]
 base = "light"
 primaryColor = "#c96442"
-backgroundColor = "#faf9f5"
-secondaryBackgroundColor = "#f0eee6"
-textColor = "#141413"
+backgroundColor = "#f7f5f0"
+secondaryBackgroundColor = "#efebe3"
+textColor = "#1a1915"
 linkColor = "#3070b3"
 blueColor = "#3070b3"
-borderColor = "#e3dfd3"
+borderColor = "#e2ddd2"
 showWidgetBorder = true
-baseRadius = "0.6rem"
+baseRadius = "0.7rem"
 baseFontSize = 17
 font = "'Segoe UI', Inter, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
 headingFont = "'Tiempos Text', Georgia, 'Iowan Old Style', 'Palatino Linotype', serif"
 codeFont = "Consolas, 'SF Mono', Menlo, ui-monospace, monospace"
-headingFontWeights = [500, 500, 500, 600, 600, 600]
+headingFontWeights = [400, 400, 400, 500, 600, 600]
 headingFontSizes = ["2.1rem", "1.7rem", "1.45rem", "1.15rem", "1rem", "0.9rem"]
 
 [theme.sidebar]
-backgroundColor = "#f0eee6"
+backgroundColor = "#f1ede5"
 secondaryBackgroundColor = "#fffefb"
-borderColor = "#e3dfd3"
+borderColor = "#e2ddd2"
 showSidebarBorder = true
 
 [client]
