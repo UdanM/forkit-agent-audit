@@ -244,7 +244,7 @@ def sidebar_section(title: str) -> None:
 
 DEMO_HINTS = {
     1: "Click **Scan**, point at the [REDACTED] card and the disk check, then open **02 Identity & Review**.",
-    2: "Point at the SAME NAME and UNKNOWN badges, mint all three, then click **Simulate Restart** in the sidebar.",
+    2: "Point at the same-name note and the UNKNOWN labels, mint all three, then click **Simulate Restart** in the sidebar.",
     3: "Toggle **Load v2 Config Update** in the sidebar, show the diff and why access mode is UNKNOWN, then open **04 Linking & Incidents**.",
     4: "Pick evt-0002 and click Link without consent (blocked), then tick consent and link (MISSING_APPROVAL + INCIDENT). "
        "Finish with evt-0003 on the filesystem-mcp passport (blocked), then open **05 Provenance Map**.",
