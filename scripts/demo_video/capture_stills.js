@@ -94,6 +94,25 @@ const URL = 'http://localhost:8501';
   await shot('p4_map', fb, [row]);
   beats[beats.length - 1].row = row;
 
+  // Pause 5 (v3): ask a question in plain English
+  const askPanel = page.locator('.st-key-askpanel');
+  await scrollTo(askPanel, 40);
+  const Q = 'Who changed reports/q3/summary.md?';
+  const input = page.locator('.st-key-ask_q input');
+  await input.click();
+  const askFocus = await box(askPanel);
+  for (let i = 0; i <= Q.length; i += 4) {
+    await input.fill(Q.slice(0, i)); await page.waitForTimeout(120);
+    await shot(`p5_type_${String(i).padStart(2, '0')}`, askFocus, []);
+  }
+  await input.fill(Q); await shot('p5_type_full', askFocus, []);
+  await askPanel.getByRole('button', { name: 'Ask' }).click(); await settle(2500);
+  await scrollTo(askPanel, 40);
+  const ab = await box(askPanel);
+  const ans = await box(askPanel.locator('[data-testid="stMarkdownContainer"] strong').first());
+  await shot('p5_answer', ab, [ans]);
+  beats[beats.length - 1].answer = await askPanel.locator('[data-testid="stMarkdownContainer"] strong').first().innerText();
+
   // Pause 5a: company rules as a file
   await tab('Changes').click(); await settle(1500);
   await scrollTo(page.getByText('Rule checks', { exact: true }), 40);
