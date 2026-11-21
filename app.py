@@ -135,6 +135,15 @@ code, .mono { font-family: var(--ad-mono) !important; }
 .muted { color:var(--ad-muted); }
 .mono { font-size:0.84rem; color:#292524; }
 .purpose { font-size:1rem; line-height:1.55; color:var(--ad-ink); max-width:62rem; margin:-4px 0 14px 0; }
+.ov { display:grid; grid-template-columns:repeat(5, 1fr); gap:12px; margin:4px 0 14px 0; }
+.ov-tile { background:#fff; border:1px solid var(--ad-line); border-radius:8px; padding:12px 16px 11px; }
+.ov-label { font-size:0.8rem; color:#57534E; }
+.ov-value { font-size:1.75rem; font-weight:600; line-height:1.25; color:var(--ad-ink); font-variant-numeric:tabular-nums; }
+.ov-note { font-size:0.8rem; color:#57534E; }
+.ov-tile.alert { border-color:#E9B8A3; }
+.ov-tile.alert .ov-value { color:#9F1239; }
+.ov-tile.warn { border-color:#EBC9A8; }
+.ov-tile.warn .ov-value { color:#9A4527; }
 .kv { display:flex; flex-wrap:nowrap; align-items:baseline; column-gap:6px; margin:3px 0; }
 .kv > b { flex:0 0 140px; color:var(--ad-muted); font-weight:500; font-size:0.9rem; }
 .kv > :not(b) { min-width:0; }
@@ -545,6 +554,36 @@ st.markdown(
     '&amp; passports</span></div></div>',
     unsafe_allow_html=True,
 )
+
+
+def overview_html() -> str:
+    """Dashboard row: the five numbers a reviewer asks for first, from the same stores the tabs use."""
+    cands = st.session_state.candidates
+    files = len({c["source_path"] for c in cands})
+    issued = eng.passports()
+    waiting = sum(1 for c in cands if c["passport_id"] not in issued)
+    drift = len(eng.metadata_changes())
+    findings = eng.policy_findings()
+    severe = sum(1 for f in findings if f["severity"] in ("critical", "high"))
+    links = eng.linked_events()
+    missing = sum(1 for lk in links if lk["approval_status"] == MISSING_APPROVAL)
+    incidents = len(eng.incidents())
+
+    def tile(label: str, value: int, note: str, alert: str = "") -> str:
+        cls = f"ov-tile {alert}" if alert and value else "ov-tile"
+        return (f'<div class="{cls}"><div class="ov-label">{html.escape(label)}</div>'
+                f'<div class="ov-value">{value}</div><div class="ov-note">{html.escape(note)}</div></div>')
+
+    return '<div class="ov">' + "".join([
+        tile("Tools found", len(cands), f"in {files} config file{'' if files == 1 else 's'}" if cands else "scan to start"),
+        tile("Passports issued", len(issued), f"{waiting} waiting for review" if waiting else "all reviewed" if issued else "none yet"),
+        tile("Config changes", drift, "waiting for review" if drift else "no edits since issue", alert="warn"),
+        tile("Rule findings", len(findings), f"{severe} high or critical" if findings else "none", alert="alert" if severe else ""),
+        tile("Incidents", incidents, f"{len(links)} event{'' if len(links) == 1 else 's'} linked, {missing} without approval" if links else "no events linked", alert="alert"),
+    ]) + "</div>"
+
+
+st.markdown(overview_html(), unsafe_allow_html=True)
 
 if st.session_state.flash:
     kind, msg = st.session_state.flash
