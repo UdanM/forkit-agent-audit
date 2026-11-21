@@ -14,7 +14,7 @@ from typing import Any
 from .engine import MISSING_APPROVAL, UNKNOWN, derive_passport_id
 from .provenance_view import load_store
 
-__all__ = ["live_map_html"]
+__all__ = ["lifecycle_html", "live_map_html"]
 
 _SEV = {"critical": "Critical", "high": "High", "medium": "Medium", "low": "Low"}
 _SEV_ORDER = ("critical", "high", "medium", "low")
@@ -48,6 +48,22 @@ _CSS = """
 .lm .arr b{position:absolute;right:2px;top:50%;margin-top:-4.5px;width:0;height:0;
   border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:7px solid #57534E}
 .lm tr.grp td{padding-top:10px}
+.lc{display:grid;grid-template-columns:1fr 34px 1fr 34px 1fr 34px 1fr 34px 1fr;font-family:Inter,"Segoe UI",system-ui,sans-serif;color:#1C1917}
+.lc .box{border:1px solid #A8A29E;background:#fff;padding:9px 11px;font-size:13px;line-height:1.4}
+.lc .n{font-size:11px;color:#78716C;font-variant-numeric:tabular-nums}
+.lc .t{font-weight:600}.lc .s{font-size:12px;color:#57534E}
+.lc .box.pp{border:1.5px solid #C25E3A}.lc .box.pp .s{color:#9A4527}
+.lc .ar{position:relative}
+.lc .ar i{position:absolute;left:3px;right:7px;top:50%;border-top:1.5px solid #57534E}
+.lc .ar b{position:absolute;right:2px;top:50%;margin-top:-4.5px;border-top:5px solid transparent;
+  border-bottom:5px solid transparent;border-left:7px solid #57534E}
+.lc .stem{grid-column:9;height:22px;position:relative}
+.lc .stem i{position:absolute;left:50%;top:0;bottom:0;border-left:1.5px solid #57534E}
+.lc .grp{grid-column:1 / -1;border:1px solid #D6D3CE;background:#FAF9F6;padding:10px 12px 12px}
+.lc .grp-h{font-size:12px;color:#57534E;margin-bottom:8px}
+.lc .recs{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.lc .recs .m{font-family:"JetBrains Mono",Consolas,monospace;font-size:12px;font-weight:600}
+.lc .red{color:#9F1239}.lc .warn{color:#9A4527}
 </style>
 """
 
@@ -70,8 +86,13 @@ def live_map_html(
     candidates: list[dict[str, Any]] | None = None,
     focus: str | None = None,
     max_tools: int = 25,
+    found_on: dict[str, str] | None = None,
 ) -> str | None:
-    """Return the map as an HTML string, or None when there is nothing to show."""
+    """Return the map as an HTML string, or None when there is nothing to show.
+
+    ``found_on`` maps passport_id to a display label for the machine it was found
+    on (context only; it is never part of the passport).
+    """
     s = load_store(store_dir)
     tools: dict[str, dict[str, Any]] = {pid: {**p, "_minted": True} for pid, p in s["passports"].items()}
     for cand in candidates or []:
@@ -114,7 +135,7 @@ def live_map_html(
                                  f'<div class="s">{len(pids)} tool(s) in this file</div></div></td>')
                 if ri == 0:
                     cells.append(f'<td rowspan="{n}">{_arrow_div()}</td>')
-                    cells.append(f'<td class="span" rowspan="{n}">{_tool_box(t, names)}</td>')
+                    cells.append(f'<td class="span" rowspan="{n}">{_tool_box(t, names, (found_on or {}).get(pid))}</td>')
                     cells.append(f'<td rowspan="{n}">{_arrow_div()}</td>')
                     cells.append(f'<td class="span" rowspan="{n}">{_passport_box(pid, t)}</td>')
                 cells.append(_arrow())
@@ -140,12 +161,13 @@ def _arrow_div() -> str:
     return '<div class="arr"><i></i><b></b></div>'
 
 
-def _tool_box(t: dict[str, Any], names: dict[str, int]) -> str:
+def _tool_box(t: dict[str, Any], names: dict[str, int], found: str | None = None) -> str:
     dup = names[str(t.get("tool_name"))] > 1
     note = ('<div class="s warn">Another tool has the same name. Kept as a separate passport.</div>' if dup else "")
     return (f'<div class="box"><div class="t">{_e(t.get("tool_name"))}</div>'
             f'<div class="s">Command: <span class="m">{_e(t.get("command"))}</span></div>'
-            f'<div class="s">Access: {_e(t.get("access_mode"))}</div>{note}</div>')
+            f'<div class="s">Access: {_e(t.get("access_mode"))}</div>'
+            + (f'<div class="s">Found on: {_e(found)}</div>' if found else "") + f'{note}</div>')
 
 
 def _passport_box(pid: str, t: dict[str, Any]) -> str:
@@ -203,3 +225,42 @@ def _checks_box(pid: str, s: dict[str, Any]) -> str:
     if not lines:
         return '<div class="box none">Nothing open</div>'
     return f'<div class="box chk">{"".join(lines)}</div>'
+
+
+def _n(count: int, one: str, many: str) -> str:
+    return f"{count} {one if count == 1 else many}"
+
+
+def lifecycle_html(store_dir: str | Path) -> str:
+    """How a passport is made, with live counts. Always complete, also for an empty store."""
+    s = load_store(store_dir)
+    missing = sum(1 for x in s["links"] if x.get("approval_status") == MISSING_APPROVAL)
+    steps = [
+        ("1", "Client config", "Claude Desktop, Cursor, VS Code", ""),
+        ("2", "Secrets removed", "Only metadata is kept", ""),
+        ("3", "Provenance hash", "File path + tool name + command", ""),
+        ("4", "Forkit Core", "compute_id()", ""),
+        ("", "Passport ID", f"{_n(len(s['passports']), 'issued', 'issued')}. Never rewritten.", " pp"),
+    ]
+    cells: list[str] = []
+    for i, (num, title, sub, cls) in enumerate(steps):
+        if i:
+            cells.append('<div class="ar"><i></i><b></b></div>')
+        num_html = f'<div class="n">Step {num}</div>' if num else '<div class="n">Result</div>'
+        cells.append(f'<div class="box{cls}">{num_html}<div class="t">{escape(title)}</div>'
+                     f'<div class="s">{escape(sub)}</div></div>')
+    link_line = _n(len(s["links"]), "event linked", "events linked")
+    if missing:
+        link_line += f", {missing} without approval"
+    records = [
+        ("approvals.json", "Approvals, kept outside the app", ""),
+        ("metadata_changes.json", _n(len(s["changes"]), "config change", "config changes"), "warn" if s["changes"] else ""),
+        ("linked_events.json", link_line, "red" if missing else ""),
+        ("incidents.json", _n(len(s["incidents"]), "incident", "incidents"), "red" if s["incidents"] else ""),
+        ("policy_findings.json", _n(len(s["findings"]), "finding", "findings"), "warn" if s["findings"] else ""),
+    ]
+    recs = "".join(f'<div class="box"><div class="m">{escape(f)}</div><div class="s {c}">{escape(d)}</div></div>'
+                   for f, d, c in records)
+    return (f'{_CSS}<div class="lc">{"".join(cells)}<div class="stem"><i></i></div>'
+            f'<div class="grp"><div class="grp-h">Records stored separately and joined by passport_id. '
+            f'They never change the passport.</div><div class="recs">{recs}</div></div></div>')

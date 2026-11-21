@@ -73,3 +73,16 @@ def test_hostile_values_are_escaped_and_secrets_absent(ws: Path) -> None:
     assert "&lt;img src=x onerror=alert(1)&gt;&quot;&amp;" in page
     for secret in ("FAKE_s3cr3t_DO_NOT_USE_9f3k", "FAKE_devpass_DO_NOT_USE_7x2q", "postgresql://"):
         assert secret not in page
+
+
+def test_lifecycle_is_complete_for_empty_and_full_store(ws: Path) -> None:
+    from src.live_map_html import lifecycle_html
+    empty = lifecycle_html(ws / "data")
+    for needle in ("Client config", "Provenance hash", "compute_id()", "0 issued", "0 events linked", "0 incidents",
+                   "joined by passport_id"):
+        assert needle in empty, needle
+    assert not (ws / "data").exists()
+    eng, ids, cands = full_demo_flow(ws)
+    full = lifecycle_html(eng.data_dir)
+    assert "3 issued" in full and "1 incident<" in full and "1 config change<" in full
+    assert "without approval" in full

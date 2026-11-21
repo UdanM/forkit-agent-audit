@@ -21,10 +21,11 @@ The original project README is untouched in [`README.md`](README.md).
 | File | Purpose |
 |---|---|
 | `src/engine.py` | Discovery (fixtures and real machine), redaction, identity, diffing, consented linking, incidents, policies, audit export |
-| `src/provenance_view.py` | Pure, read-only Graphviz DOT builders for the lifecycle diagram (shown in the app) and a DOT version of the live map |
-| `src/live_map_html.py` | Read-only HTML flow-chart table for the live provenance map shown in the app |
+| `src/provenance_view.py` | Pure, read-only Graphviz DOT builders for the lifecycle diagram and the live map (kept for export and tests) |
+| `src/live_map_html.py` | Read-only HTML flow charts shown in the app: the lifecycle diagram and the live provenance map |
+| `src/discovery_host.py` | "Discovered on" machine name, stored as a sidecar record keyed by `passport_id` |
 | `app.py` | Streamlit demo: Discover → Match → Suggest → Review → Link → Map |
-| `tests/` | `test_acceptance.py` (6) · `test_local_discovery.py` (12) · `test_policies.py` (17) · `test_audit.py` (10) · `test_provenance_view.py` (14) · `test_live_map_html.py` (5) |
+| `tests/` | `test_acceptance.py` (6) · `test_local_discovery.py` (12) · `test_policies.py` (17) · `test_audit.py` (10) · `test_provenance_view.py` (14) · `test_live_map_html.py` (6) · `test_discovery_host.py` (5) |
 | `fixtures/` | Mock MCP configs, a v2 config edit, runtime events, approvals, policies |
 
 ---
@@ -36,6 +37,12 @@ MCP configs don't declare an owner or a version, so AutoDiscover stores the lite
 and never fills in a plausible-looking guess. The same rule covers `client` (we only recognize known
 config file names) and `access_mode`:
 
+- **Discovered on is not an owner.** In real-machine mode the app records the machine's short host name
+  in `data/local/discovered_on.json` (keyed by `passport_id`, with first and last seen times) and shows it
+  as "discovered on". Owner stays `UNKNOWN`. The host name is never a `compute_id` input, so the same
+  config gives the same passport ID on every machine, and `passports.json` never contains it. Demo mode
+  shows "Demo fixtures (not a real machine)" instead of the host running the demo. If nothing was
+  recorded, it shows `UNKNOWN`.
 - `access_mode = "read-only"` only when the config **proves** it, for example a Docker bind mount marked
   `ro`, `:ro`, or a `--read-only` flag.
 - Without that evidence it is `UNKNOWN`. It is **never** assumed to be `read-write`. When the v2 config
@@ -150,7 +157,7 @@ The **05 Provenance Map** tab shows two diagrams, with no new dependency:
 
 - **Lifecycle:** client config → redaction → provenance hash → Forkit Core `compute_id` → stable
   `passport_id`. The side records (approvals, drift, links, incidents, policy findings) hang off the
-  passport by `passport_id`, with live counts. Drawn with `st.graphviz_chart`.
+  passport by `passport_id`, with live counts. Drawn as a straight left-to-right chart.
 - **Live provenance map:** a flow chart with fixed columns, read left to right: Config file → MCP tool →
   Passport → Runtime event → Incident, plus an Open checks column for drift and policy findings. There is
   one row per linked event and every arrow is straight. Labels are plain English: "Integrity check passed"
@@ -205,9 +212,10 @@ Requires Python 3.10+. Run everything from the repository root.
 ```bash
 pip install -r requirements.txt
 
-# All AutoDiscover tests (64): acceptance, real-machine discovery, policies, audit export, provenance views
+# All AutoDiscover tests (70): acceptance, real-machine discovery, policies, audit export, provenance views, discovered-on
 python -m pytest tests/test_acceptance.py tests/test_local_discovery.py tests/test_policies.py \
-                 tests/test_audit.py tests/test_provenance_view.py tests/test_live_map_html.py -v
+                 tests/test_audit.py tests/test_provenance_view.py tests/test_live_map_html.py \
+                 tests/test_discovery_host.py -v
 
 # Live demo
 streamlit run app.py
@@ -262,6 +270,7 @@ read-only scan of these well-known locations:
   `unreadable`, `invalid_json`, `invalid_format`) and never crash the scan. A machine with no configs
   returns a clean empty summary.
 - Results go to an isolated registry in `data/local/`, which never touches the demo's `data/passports.json`.
+- Each scan records which machine it ran on in `data/local/discovered_on.json`. This is context only, not an owner.
 - Run Streamlit on your own computer for this mode. In a cloud container it correctly reports 0 configs.
 
 ### Out-of-order clicks are safe

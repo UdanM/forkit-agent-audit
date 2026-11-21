@@ -37,8 +37,8 @@ from src.engine import (
     raw_secret_values_from_configs,
     render_audit_markdown,
 )
-from src.live_map_html import live_map_html
-from src.provenance_view import lifecycle_dot
+from src.discovery_host import discovered_on_label, machine_name, record_discovery
+from src.live_map_html import lifecycle_html, live_map_html
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 
@@ -249,7 +249,7 @@ DEMO_HINTS = {
     3: "Toggle **Load v2 Config Update** in the sidebar, show the diff and why access mode is UNKNOWN, then open **04 Linking & Incidents**.",
     4: "Pick evt-0002 and click Link without consent (blocked), then tick consent and link (MISSING_APPROVAL + INCIDENT). "
        "Finish with evt-0003 on the filesystem-mcp passport (blocked), then open **05 Provenance Map**.",
-    5: "Close the demo here: walk config → provenance hash → passport → events/incidents, all joined by passport_id.",
+    5: "Walk the top diagram once, then read the evt-0002 row of the live map from left to right.",
 }
 
 
@@ -260,7 +260,7 @@ def real_mode() -> bool:
 def demo_hint(step: int) -> None:
     if real_mode():
         return
-    st.caption(f"Next demo step · {DEMO_HINTS[step]}")
+    st.caption(f"Next in the demo: {DEMO_HINTS[step]}")
 
 
 SEVERITY_KIND = {"critical": "bad", "high": "bad", "medium": "warn", "low": "slate"}
@@ -276,6 +276,14 @@ def rule_badges(findings: list[dict[str, Any]]) -> str:
 def refresh_policies() -> None:
     """Re-evaluate policy-as-code rules into the ACTIVE store (data/ or data/local/)."""
     engine().evaluate_policies(st.session_state.get("candidates") or [])
+
+
+def found_on_html(pid: str) -> str:
+    """Discovered-on cell: demo label, recorded machine name(s), or the UNKNOWN badge."""
+    label = discovered_on_label(engine().data_dir, pid, demo=not real_mode())
+    if label == UNKNOWN:
+        return value_badge(label)
+    return f'<span>{html.escape(label)}</span>' if not real_mode() else f'<span class="mono">{html.escape(label)}</span>'
 
 
 def short(pid: str) -> str:
@@ -301,6 +309,8 @@ def engine() -> AutoDiscoverEngine:
 def run_discovery() -> None:
     if real_mode():
         summary = engine().scan_local_machine()     # read-only; never raises for a bad file
+        # Sidecar only: the machine name never enters passport_id inputs, and owner stays UNKNOWN.
+        record_discovery(engine().data_dir, [c["passport_id"] for c in summary["candidates"]], machine_name())
         st.session_state.scan_summary = summary
         st.session_state.candidates = summary["candidates"]
     else:
@@ -363,7 +373,7 @@ with st.sidebar:
     st.divider()
 
     # ── Section 1: Discovery Mode ──
-    sidebar_section("Discovery Mode")
+    sidebar_section("Source")
     mode_labels = {"demo": "Demo fixtures (default)", "real": "Scan Real Local Machine"}
     picked = st.radio("Discovery mode", list(mode_labels), format_func=mode_labels.get,
                       index=list(mode_labels).index(st.session_state.mode), label_visibility="collapsed")
@@ -384,7 +394,7 @@ with st.sidebar:
 
     # ── Section 2: Demo Controls ──
     st.divider()
-    sidebar_section("Demo Controls")
+    sidebar_section("Demo")
     if real_mode():
         if st.button("Clear Local Scan Registry", width="stretch", type="primary"):
             for f in LOCAL_DATA.glob("*.json"):
@@ -457,7 +467,7 @@ with st.sidebar:
 
     # ── Section 3: Live Governance Metrics & Audit Export (read-only snapshot) ──
     st.divider()
-    sidebar_section("Live Governance Metrics & Audit Export")
+    sidebar_section("Status and audit")
     passports = eng.passports()
     n_incidents = len(eng.incidents())
     audit = eng.build_audit_report(
@@ -497,13 +507,9 @@ with st.sidebar:
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 
-PRINCIPLES = [("Metadata-only", "#3E63A8"), ("Unknown stays UNKNOWN", "#D97706"),
-              ("No false merges", "#EA580C"), ("Consent-gated linking", "#059669")]
 st.markdown(
     '<div class="hero"><div class="hero-title">AutoDiscover<span class="hero-sub">Zero-touch AI onboarding '
-    '&amp; passports</span></div><div class="pills">'
-    + "".join(f'<span class="pill" style="--pill-dot:{dot}">{html.escape(t)}</span>' for t, dot in PRINCIPLES)
-    + "</div></div>",
+    '&amp; passports</span></div></div>',
     unsafe_allow_html=True,
 )
 
@@ -522,9 +528,9 @@ elif proof:
     dupes = len(keys) - len(set(keys))
     if same and dupes == 0:
         st.success(
-            f"RESTART RECOGNIZED: in-memory state wiped, re-scan matched "
-            f"{len(proof['recognized'])}/{len(proof['after'])} tools to existing passports. "
-            f"Same passport_ids, {proof['registry_count']} passports in registry, 0 duplicates."
+            f"Restart recognized. Memory was cleared and the re-scan matched "
+            f"{len(proof['recognized'])} of {len(proof['after'])} tools to their existing passports. "
+            f"Same passport IDs, {proof['registry_count']} passports in the registry, no duplicates."
         )
     else:
         st.warning(
@@ -547,7 +553,7 @@ candidates: list[dict[str, Any]] = st.session_state.candidates
 # ── 01 Discover ───────────────────────────────────────────────────────────────
 
 with tab1:
-    st.subheader("Step 1 · Local Discovery (Metadata-Only)")
+    st.subheader("Find MCP servers on this machine")
     demo_hint(1)
     if real_mode():
         st.caption("Read-only scan of the well-known Claude Desktop, Cursor and VS Code MCP config locations "
@@ -622,7 +628,7 @@ with tab1:
 # ── 02 Identity & Review ──────────────────────────────────────────────────────
 
 with tab2:
-    st.subheader("Step 2 · Identity & Honesty Review")
+    st.subheader("Review each server and issue its passport")
     demo_hint(2)
     st.caption(
         "passport_id = compute_id(passport_type='mcp_server', name, version='UNKNOWN', "
@@ -665,6 +671,7 @@ with tab2:
                     f'<div class="kv"><b>source_path</b>{value_badge(c["source_path"])}</div>'
                     f'<div class="kv"><b>command</b>{value_badge(c["command"])}</div>'
                     f'<div class="kv"><b>owner</b>{value_badge(c["owner"])}</div>'
+                    f'<div class="kv"><b>discovered on</b>{found_on_html(c["passport_id"])}</div>'
                     f'<div class="kv"><b>version</b>{value_badge(c["version"])}</div>'
                     f'<div class="kv"><b>access_mode</b>{value_badge(c["access_mode"])}</div>'
                     f'<div class="kv"><b>passport_id</b><span class="mono">{short(c["passport_id"])}</span></div>'
@@ -695,7 +702,7 @@ with tab2:
 # ── 03 Drift & Governance ─────────────────────────────────────────────────────
 
 with tab3:
-    st.subheader("Step 3 · Metadata Diff & Governance Alerts")
+    st.subheader("Config changes and policy findings")
     demo_hint(3)
     changed = [c for c in candidates if c.get("metadata_changed")]
     if real_mode():
@@ -764,7 +771,7 @@ with tab3:
 # ── 04 Linking & Incidents ────────────────────────────────────────────────────
 
 with tab4:
-    st.subheader("Step 4 · Consented Event Linking & Incident Log")
+    st.subheader("Link runtime events to passports")
     demo_hint(4)
     events = load_events()
     passports = eng.passports()
@@ -840,8 +847,8 @@ with tab4:
                 inc = next((i for i in eng.incidents() if i["incident_id"] == link["incident_id"]), None)
                 if inc:
                     st.markdown(
-                        f'<div class="card incident"><h4 style="font-size:1.45rem">'
-                        f'Incident recorded · Out-of-expected-behavior</h4>'
+                        f'<div class="card incident"><h4>'
+                        f'Incident recorded: out of expected behavior</h4>'
                         f'<div class="kv"><b>Incident</b><span class="mono">{html.escape(inc["incident_id"])}</span></div>'
                         f'<div class="kv"><b>Tool</b><span class="mono">{html.escape(inc["tool_name"])} '
                         f'({short(inc["passport_id"])})</span></div>'
@@ -872,13 +879,13 @@ with tab4:
 # ── 05 Provenance Map ─────────────────────────────────────────────────────────
 
 with tab5:
-    st.subheader("Step 5 · Visual Provenance & Lifecycle Flow")
+    st.subheader("Where every record comes from")
     demo_hint(5)
     store = eng.data_dir                              # data/ (demo) or data/local/ (real machine), read-only
-    st.markdown("**How identity flows**: from client config to a stable passport. Approvals, drift, events, "
-                "incidents and policy findings attach by `passport_id` and never mutate the passport.")
+    st.markdown("**How a passport is made.** The ID comes only from where the tool is configured. "
+                "Everything learned later is stored next to it, never inside it.")
     with st.container(border=True, key="graphframe_lifecycle"):
-        st.graphviz_chart(lifecycle_dot(store), width="stretch")
+        st.html(lifecycle_html(store))
 
     st.markdown("**Live provenance map**")
     map_passports = eng.passports()
@@ -888,7 +895,9 @@ with tab5:
         format_func=lambda p: "All tools" if p is None else
         f'{map_passports[p]["tool_name"]} @ {map_passports[p]["source_path"]} · {short(p)}',
     )
-    live = live_map_html(store, candidates=st.session_state.candidates, focus=focus)
+    found_on = {p: discovered_on_label(store, p, demo=not real_mode())
+                for p in set(map_passports) | {c["passport_id"] for c in st.session_state.candidates}}
+    live = live_map_html(store, candidates=st.session_state.candidates, focus=focus, found_on=found_on)
     if live is None:
         st.info("Nothing to map yet. Scan in **01 Discover** (and mint in **02 Identity & Review**) and the live map of configs, passports, "
                 "events and incidents appears here.")
