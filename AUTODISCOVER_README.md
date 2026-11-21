@@ -16,6 +16,8 @@ It is built on top of Forkit Core in this repository. Passport IDs come from For
 `forkit.domain.identity.compute_id`, and hashing uses `forkit.domain.hashing.HashEngine`.
 The original project README is untouched in [`README.md`](README.md).
 
+> **New here?** Read [docs/OVERVIEW.md](docs/OVERVIEW.md). **Building something similar?** See [docs/MERGE_BRIEF.md](docs/MERGE_BRIEF.md).
+
 ### In plain words
 
 Companies now run many AI tools, and often nobody knows which ones are installed or what they did.
@@ -342,5 +344,6 @@ All credentials in the fixtures are fake (`FAKE_..._DO_NOT_USE`).
 ## Known limitations
 - Env values are redacted *before* hashing, so rotating only a secret value doesn't register as drift.
   This is deliberate: we never store a derivative of a secret.
-- Discovery currently reads the `mcpServers` JSON shape used by Claude Desktop and Cursor.
+- Discovery reads the `mcpServers` shape (Claude Desktop, Cursor) and the `servers` shape (VS Code).
+- Runtime events and approvals come from fixture files; there is no live MCP client hook or in-app approval flow yet.
 - Linking is idempotent per (`event_id`, `passport_id`).
