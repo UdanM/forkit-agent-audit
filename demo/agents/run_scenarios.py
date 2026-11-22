@@ -80,8 +80,9 @@ def find_n8n(explicit: str | None = None) -> str | None:
     return None
 
 
-def run_n8n(n8n: str, root: Path, out: Path, url: str, token: str) -> tuple[bool, str]:
-    env = {**os.environ,
+def n8n_env(root: Path, out: Path, url: str, token: str) -> dict[str, str]:
+    """Environment for the n8n subprocess. Works on n8n 1.x and 2.x."""
+    return {**os.environ,
            "N8N_USER_FOLDER": str(out / "n8n-home"),
            "AUTODISCOVER_ROOT": str(root),
            "AUTODISCOVER_WORKSPACE": str(out / "workspace"),
@@ -90,7 +91,14 @@ def run_n8n(n8n: str, root: Path, out: Path, url: str, token: str) -> tuple[bool
            "N8N_RESTRICT_FILE_ACCESS_TO": str(out / "workspace"),
            "N8N_DIAGNOSTICS_ENABLED": "false",
            "N8N_RUNNERS_ENABLED": "false",
-           "N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS": "false"}
+           "N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS": "false",
+           # n8n 2.x blocks $env in expressions by default ("access to env vars denied"). The workflow
+           # reads only the four AUTODISCOVER_* / N8N_COLLECTOR_TOKEN values set here.
+           "N8N_BLOCK_ENV_ACCESS_IN_NODE": "false"}
+
+
+def run_n8n(n8n: str, root: Path, out: Path, url: str, token: str) -> tuple[bool, str]:
+    env = n8n_env(root, out, url, token)
     flow = DEMO / "n8n" / "report_flow.json"
     for cmd in ([n8n, "import:workflow", f"--input={flow}"], [n8n, "execute", f"--id={N8N_WORKFLOW_ID}"]):
         proc = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True, timeout=300)

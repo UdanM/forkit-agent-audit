@@ -26,6 +26,15 @@ def test_one_click_setup_then_link_shows_plain_labels():
     text = " ".join(m.value for m in at.markdown)
     assert not at.exception
     assert "NO APPROVAL ON FILE" in text and "Incident recorded" in text
+    # Lineage: the incident names its parent passport and the settings file that declared the tool.
+    parent = text.split("Parent passport", 1)[1].split("</div>", 1)[0]
+    assert "filesystem-mcp" in parent and "fixtures/claude_desktop_config.json" in parent
+    assert "In plain words" in text and "1 INCIDENT" in text          # Map summary
+    _button(at, "Save log checkpoint").click().run()
+    _button(at, "Simulate log tampering").click().run()
+    tamper_text = " ".join(m.value for m in at.markdown)
+    assert "Someone rewrote the log" in tamper_text and "The timeline is withheld" in tamper_text
+    _button(at, "Restore original log").click().run()
     at.selectbox(key="ev_select").set_value("evt-0004").run()
     assert _button(at, "Link action to tool").disabled
     assert any("Ambiguous source" in message.value for message in at.warning)
@@ -48,6 +57,12 @@ def test_ask_follows_an_agent_and_identifies_human_edits():
     _button(at, "Open Activity timeline").click().run()
     assert not at.exception and at.session_state["active_tab"] == "Activity timeline"
     assert "Maya Chen (simulated human)" in ask("Who was the human in the workflow?")["answer"]
+    timeline = next(tab for tab in at.tabs if tab.label == "Activity timeline")
+    assert any("2 file changes</b> attributed to people (2 simulated)" in item.value for item in timeline.markdown)
+    evidence = next(panel for panel in timeline.expander if panel.label.startswith("Technical details"))
+    runs, actions, *_ = evidence.dataframe
+    assert "record" in runs.value.columns and "record" in actions.value.columns
+    assert set(actions.value["actor_type"]) >= {"agent", "human"}
     _button(at, "Save log checkpoint").click().run()
     assert "Report assistant" in ask("Who is the parent of Report helper?")["answer"]
     _button(at, "Simulate log tampering").click().run()

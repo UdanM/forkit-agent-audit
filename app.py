@@ -284,7 +284,7 @@ DEMO_HINTS = {
        "(no approval on file, so an incident is recorded). "
        "Then evt-0003 on the filesystem-mcp passport (blocked). evt-0004 names only `postgres-mcp`, which two "
        "configs share, so it is ambiguous: keep it for human review instead. Then open **Map**.",
-    5: "Walk the top diagram once, then read the evt-0002 row of the live map from left to right.",
+    5: "Read the **In plain words** card, then follow the evt-0002 row of the full map from left to right.",
     6: "Click **Save log checkpoint**, read the helper's delegated write to the protected file, then click "
        "**Simulate log tampering**: the rewritten log raises a critical finding.",
 }
@@ -889,32 +889,32 @@ with tab1:
             "tool_name": c["tool_name"],
             "kind": KIND_LABELS.get(c.get("passport_type", "mcp_server"), UNKNOWN),
             "client": c["client"],
-            "source_path": c["source_path"],
-            "command": c["command"],
-            "owner": c["owner"],
-            "discovered_on": "Demo fixtures" if demo_mode() else discovered_on_label(eng.data_dir, c["passport_id"], demo=False),
-            "version": c["version"],
             "access_mode": c["access_mode"],
-            "transport": c.get("transport", UNKNOWN),
-            "enabled": {True: "yes", False: "no"}.get(c.get("enabled"), UNKNOWN),
+            "owner": c["owner"],
+            "source_path": c["source_path"],
         } for c in candidates], width="stretch", hide_index=True, column_config={
-            "tool_name": col("Tool"), "kind": col("Kind"), "client": col("Client"), "source_path": col("Config file or location", width="large"),
-            "command": col("Command"), "owner": col("Owner"),
-            "discovered_on": col("Discovered on",
-                                 help="Machine the scan ran on. Context only: not the owner, never part of the passport ID."),
-            "version": col("Version"), "access_mode": col("Access"),
-            "transport": col("Transport"), "enabled": col("Enabled", help="UNKNOWN unless the config says so."),
+            "tool_name": col("Tool"), "kind": col("Kind"), "client": col("Found in"),
+            "access_mode": col("Access", help="read-only only when the settings prove it. Otherwise UNKNOWN."),
+            "owner": col("Owner", help="UNKNOWN: the settings do not say who owns the tool, so we do not guess."),
+            "source_path": col("Settings file", width="large"),
         })
-        with st.expander("Arguments, environment and settings fingerprint"):
+        with st.expander("More details: command, version, arguments, environment, fingerprint"):
             st.dataframe([{
                 "tool_name": c["tool_name"],
-                "source_path": c["source_path"],
+                "command": c["command"],
+                "version": c["version"],
+                "transport": c.get("transport", UNKNOWN),
+                "enabled": {True: "yes", False: "no"}.get(c.get("enabled"), UNKNOWN),
+                "discovered_on": "Demo fixtures" if demo_mode() else discovered_on_label(eng.data_dir, c["passport_id"], demo=False),
                 "args": " ".join(c["args"]),
                 "env": ", ".join(f'{k}="{v}"' for k, v in c["env"].items()) or "none",
                 "config_hash": c["config_hash"][:12] + "…",
             } for c in candidates], width="stretch", hide_index=True, column_config={
-                "tool_name": col("Tool", width=130), "source_path": col("Config file", width=260),
-                "args": col("Arguments", width=560, help="Secrets redacted. Hover a cell to read it all."),
+                "tool_name": col("Tool", width=130), "command": col("Command"), "version": col("Version"),
+                "transport": col("Transport"), "enabled": col("Enabled", help="UNKNOWN unless the config says so."),
+                "discovered_on": col("Discovered on",
+                                     help="Machine the scan ran on. Context only: not the owner, never part of the passport ID."),
+                "args": col("Arguments", width=480, help="Secrets redacted. Hover a cell to read it all."),
                 "env": col("Environment", width=230), "config_hash": col("Fingerprint", width=120),
             })
 
@@ -1237,8 +1237,11 @@ with tab4:
                         f'<p style="margin:2px 0 8px 0">This tool was confirmed as read-only, but it tried to change something '
                         f'({html.escape(inc["tool_call"])}). The result was {html.escape(str(inc["result"]))}, and the attempt is on record.</p>'
                         f'<div class="kv"><b>Incident</b><span class="mono">{html.escape(inc["incident_id"])}</span></div>'
-                        f'<div class="kv"><b>Tool</b><span class="mono">{html.escape(inc["tool_name"])} '
-                        f'({short(inc["passport_id"])})</span></div>'
+                        f'<div class="kv"><b>Parent passport</b><span class="mono">{html.escape(inc["tool_name"])} · '
+                        f'{short(inc["passport_id"])} · '
+                        f'{html.escape(eng.passports().get(inc["passport_id"], {}).get("source_path", UNKNOWN))}</span></div>'
+                        f'<div class="muted" style="margin:0 0 6px 0">Traced back: event → passport → the settings file '
+                        f'that declared this tool. Same chain as the row in <b>Map</b>.</div>'
                         f'<div class="kv"><b>Attempted</b><span class="mono">{html.escape(inc["tool_call"])} → '
                         f'{html.escape(str(inc["target"]))}</span> {badge(inc["result"].upper(), "bad")}</div>'
                         f'<div class="kv"><b>Expected</b>{badge(inc["expected_behavior"], "ok")}</div>'
@@ -1265,6 +1268,38 @@ with tab4:
                 "Time": i["timestamp"], "Result": i["result"],
             } for i in eng.incidents()] or [{"Incident": "None yet"}], width="stretch", hide_index=True)
 
+def map_summary_html() -> str:
+    """The map in plain sentences: one line per tool, worst news first."""
+    regs = eng.passports()
+    links, incs = eng.linked_events(), eng.incidents()
+    finds = eng.policy_findings()
+    changed = {c["passport_id"] for c in st.session_state.candidates if c.get("metadata_changed")}
+    rows = []
+    for c in st.session_state.candidates:
+        pid = c["passport_id"]
+        n_link = sum(lk["passport_id"] == pid for lk in links)
+        n_inc = sum(i["passport_id"] == pid for i in incs)
+        n_find = sum(f.get("passport_id") == pid for f in finds) + (pid in changed)
+        if pid not in regs:
+            parts, tone = [badge("NOT REGISTERED YET", "neutral")], 3
+        else:
+            parts = [badge("REGISTERED", "ok")]
+            if n_inc:
+                parts.append(badge(f"{n_inc} INCIDENT{'S' if n_inc > 1 else ''}", "bad"))
+            if pid in changed:
+                parts.append(badge("SETTINGS CHANGED", "warn"))
+            tone = 0 if n_inc else 1 if n_find else 2
+        facts = (f"{n_link} action{'' if n_link == 1 else 's'} linked · "
+                 f"{n_find} open check{'' if n_find == 1 else 's'} for a person")
+        rows.append((tone, f'<div class="kv"><b>{html.escape(c["tool_name"])}</b><span>{"".join(parts)} '
+                           f'<span class="muted">in {html.escape(c["client"])} · {facts}</span></span></div>'))
+    if not rows:
+        return ""
+    rows.sort(key=lambda r: r[0])
+    return ('<div class="card"><h4>In plain words</h4>' + "".join(r for _, r in rows)
+            + '<div class="muted" style="margin-top:8px">Below, the full map shows where each fact comes from.</div></div>')
+
+
 # ── Map ─────────────────────────────────────────────────────────
 
 with tab5:
@@ -1272,12 +1307,16 @@ with tab5:
     tab_purpose(5)
     demo_hint(5)
     store = eng.data_dir                              # data/ (demo) or data/local/ (real machine), read-only
-    st.markdown("**How a passport is made.** The ID comes only from where the tool is configured. "
-                "Everything learned later is stored next to it, never inside it.")
-    with st.container(border=True, key="graphframe_lifecycle"):
-        st.html(lifecycle_html(store))
+    summary = map_summary_html()
+    if summary:
+        st.markdown(summary, unsafe_allow_html=True)
+    with st.expander("How a passport ID is made (diagram)"):
+        st.markdown("The ID comes only from where the tool is configured. Everything learned later is stored next "
+                    "to it, never inside it.")
+        with st.container(border=True, key="graphframe_lifecycle"):
+            st.html(lifecycle_html(store))
 
-    st.markdown("**Live provenance map**")
+    st.markdown("**Full map, row by row**")
     map_passports = eng.passports()
     focus_options = [None] + sorted(map_passports)
     focus = st.selectbox(
@@ -1348,46 +1387,76 @@ with tab6:
                     "rewritten": ("Log REWRITTEN since checkpoint", "bad"),
                     "truncated": ("Log TRUNCATED since checkpoint", "bad"),
                     "invalid": ("Saved checkpoint is invalid", "bad")}[tl["checkpoint"]]
-        st.markdown(
-            f'<div class="card"><h4>Evidence</h4>'
-            f'<div class="kv"><b>Log integrity</b>{badge(cp_state[0], cp_state[1])}</div>'
-            f'<div class="kv"><b>Records</b><span class="mono">{len(tl["runs"])} runs · {len(tl["agents"])} agents · '
-            f'{len(tl["actions"])} actions · {len(tl["self_reported"])} self-reported</span></div>'
-            f'<div class="kv"><b>Rejected rows</b><span class="mono">{len(tl["rejected"]["observer"])} observer · '
-            f'{len(tl["rejected"]["self_reported"])} self-reported</span></div></div>',
-            unsafe_allow_html=True)
-
-        st.markdown("**What needs review**")
-        if not tl["findings"]:
-            st.success("No activity rule fired.")
-        else:
-            st.html(findings_html(tl["findings"]))
+        changes = [x for x in tl["actions"] if x.get("path")]
+        unknown = sum(x["actor"] == UNKNOWN for x in changes)
+        human_changes = [x for x in changes if x["actor_type"] == "human" and x["actor"] != UNKNOWN]
+        simulated = sum(change.get("simulated", False) for change in human_changes)
+        helped = sum(x["actor_type"] == "agent" and x["initiated_by"] not in (None, UNKNOWN) for x in changes)
+        order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        fnd = sorted(tl["findings"], key=lambda f: order.get(f["severity"], 9))
+        sev = {k: sum(f["severity"] == k for f in fnd) for k in order}
+        log_line = {"none": "The log has no saved checkpoint yet, so later edits to it could go unnoticed.",
+                    "intact": "The saved portion of the log still matches its checkpoint.",
+                    "rewritten": "Someone rewrote the log after the checkpoint was saved. Treat it as untrustworthy.",
+                    "truncated": "Someone cut lines from the log after the checkpoint was saved.",
+                    "invalid": "The saved checkpoint is damaged, so the log cannot be checked."}[tl["checkpoint"]]
+        lines = [f"The observer recorded <b>{len(tl['runs'])} agent runs</b> and <b>{len(changes)} file changes</b>"
+                 + (f", {helped} by an agent acting for another run" if helped else "") + "."]
+        if human_changes:
+            count = len(human_changes)
+            qualifier = f" ({simulated} simulated)" if simulated else ""
+            lines.append(f"<b>{count} file change{'s' if count != 1 else ''}</b> attributed to people{qualifier}.")
+        if unknown:
+            lines.append(f"<b>{unknown} change{'s' if unknown != 1 else ''}</b> could not be tied to a known actor, "
+                         "so the actor stays UNKNOWN.")
+        elif changes and not human_changes:
+            lines.append("Every change is tied to an observed agent run.")
+        if tl["checkpoint"] in ("rewritten", "truncated", "invalid"):
+            lines = ["The timeline is withheld because the log failed its checkpoint."]
+        lines.extend([log_line,
+                 (f"<b>{len(fnd)} thing{'s' if len(fnd) != 1 else ''} need a person to look</b>"
+                  + " (" + ", ".join(f"{n} {k}" for k, n in sev.items() if n) + "). Most serious: "
+                  + html.escape(fnd[0]["title"]) + "." if fnd else "No activity rule fired.")])
+        st.markdown(f'<div class="card"><h4>In plain words {badge(cp_state[0], cp_state[1])}</h4>'
+                    + "".join(f'<div style="margin:4px 0">{ln}</div>' for ln in lines) + "</div>",
+                    unsafe_allow_html=True)
 
         st.markdown("**What happened, in order**")
         st.html(activity_feed_html(tl))
 
-        col = st.column_config.TextColumn
-        st.markdown("**Runs and delegation** · one agent identity can have many runs; a helper keeps its own run")
-        st.dataframe([{
-            "record": r["record_id"], "run": r["run_id"], "label": r["label"],
-            "agent": short(r["agent"]) if r["agent"] != UNKNOWN else UNKNOWN,
-            "delegated_by": r["delegated_by"] or "", "access": r["access"], "tool": r["tool"],
-            "started": r["started_at"], "pid": r["pid"] if r["pid"] is not None else "",
-        } for r in tl["runs"]], width="stretch", hide_index=True, column_config={
-            "record": col("Record"), "run": col("Run"), "label": col("Label"),
-            "agent": col("Agent ID", help="From deployment + agent_id + instance_id on the observer's run record."),
-            "delegated_by": col("Delegated by"), "access": col("Access"), "tool": col("Tool"),
-            "started": col("Started"), "pid": col("PID"),
-        })
-        st.markdown("**All actions**")
-        with st.expander("All actions as a table"):
+        if fnd:
+            with st.expander(f"What needs review: {len(fnd)} rule finding{'s' if len(fnd) != 1 else ''}",
+                             expanded=bool(sev["critical"])):
+                st.html(findings_html(fnd))
+
+        with st.expander("Technical details: runs, delegation, all actions, self-reports"):
+            st.markdown(
+                f'<div class="kv"><b>Records</b><span class="mono">{len(tl["runs"])} runs · {len(tl["agents"])} agents · '
+                f'{len(tl["actions"])} actions · {len(tl["self_reported"])} self-reported</span></div>'
+                f'<div class="kv"><b>Rejected rows</b><span class="mono">{len(tl["rejected"]["observer"])} observer · '
+                f'{len(tl["rejected"]["self_reported"])} self-reported</span></div>',
+                unsafe_allow_html=True)
+            col = st.column_config.TextColumn
+            st.markdown("**Runs and delegation** · one agent identity can have many runs; a helper keeps its own run")
             st.dataframe([{
-            "record": a["record_id"], "time": a["time"], "actor": a["actor"], "actor_type": a.get("actor_type", ""),
-            "why": a["actor_reason"],
-            "initiated_by": a["initiated_by"] or "", "action": a.get("operation") or a.get("tool_call", ""),
-            "path_or_target": a.get("path") or a.get("target", ""),
-            "approval": {True: "yes", False: "no"}.get(a.get("approval"), UNKNOWN),
-            "protected": {True: "yes", False: "no"}.get(a.get("protected"), UNKNOWN),
+                "record": r["record_id"], "run": r["run_id"], "label": r["label"],
+                "agent": short(r["agent"]) if r["agent"] != UNKNOWN else UNKNOWN,
+                "delegated_by": r["delegated_by"] or "", "access": r["access"], "tool": r["tool"],
+                "started": r["started_at"], "pid": r["pid"] if r["pid"] is not None else "",
+            } for r in tl["runs"]], width="stretch", hide_index=True, column_config={
+                "record": col("Record"), "run": col("Run"), "label": col("Label"),
+                "agent": col("Agent ID", help="From deployment + agent_id + instance_id on the observer's run record."),
+                "delegated_by": col("Delegated by"), "access": col("Access"), "tool": col("Tool"),
+                "started": col("Started"), "pid": col("PID"),
+            })
+            st.markdown("**All actions**")
+            st.dataframe([{
+                "record": a["record_id"], "time": a["time"], "actor": a["actor"], "actor_type": a["actor_type"],
+                "why": a["actor_reason"],
+                "initiated_by": a["initiated_by"] or "", "action": a.get("operation") or a.get("tool_call", ""),
+                "path_or_target": a.get("path") or a.get("target", ""),
+                "approval": {True: "yes", False: "no"}.get(a.get("approval"), UNKNOWN),
+                "protected": {True: "yes", False: "no"}.get(a.get("protected"), UNKNOWN),
             } for a in tl["actions"]], width="stretch", hide_index=True, column_config={
                 "record": col("Record"), "time": col("Time"), "actor": col("Actor"),
                 "actor_type": col("Actor type"), "why": col("Actor evidence"),
@@ -1395,16 +1464,16 @@ with tab6:
                 "path_or_target": col("Path / target", width="large"), "approval": col("Approval"),
                 "protected": col("Protected"),
             })
-        if tl["shared_files"]:
-            st.markdown("**Files touched by more than one actor** · overlap is a lead for review, not proof")
-            st.dataframe([{"path": p, "actors": ", ".join(who)} for p, who in tl["shared_files"].items()],
-                         width="stretch", hide_index=True)
-        if tl["self_reported"]:
-            st.markdown("**The agent's own report, checked against the observer**")
-            st.dataframe([{
-                "record": r["record_id"], "run": r["run_id"], "claim": r.get("path") or r.get("label") or r["kind"],
-                "verdict": r["verdict"],
-            } for r in tl["self_reported"]], width="stretch", hide_index=True)
+            if tl["shared_files"]:
+                st.markdown("**Files touched by more than one actor** · overlap is a lead for review, not proof")
+                st.dataframe([{"path": p, "actors": ", ".join(who)} for p, who in tl["shared_files"].items()],
+                             width="stretch", hide_index=True)
+            if tl["self_reported"]:
+                st.markdown("**The agent's own report, checked against the observer**")
+                st.dataframe([{
+                    "record": r["record_id"], "run": r["run_id"], "claim": r.get("path") or r.get("label") or r["kind"],
+                    "verdict": r["verdict"],
+                } for r in tl["self_reported"]], width="stretch", hide_index=True)
         st.caption("Evidence model ported from UdanM/forkit-agent-audit. Rules POL-006 to POL-019 live in "
                    "fixtures/policies.json; diffs are reduced to a hash and size, never stored.")
 
