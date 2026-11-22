@@ -36,8 +36,13 @@ workspace around each worker; it does not enforce OS permissions.
 
 ## Prompt injection comparison
 
-Open **Prompt injection** in the dashboard for a bundled replay. Both scripted agents get the same request
-to write `reports/status.txt`. The VM run also gets `inputs/extra-instructions.json`. The script deliberately
+Open **Prompt injection** to type a report prompt, preview the staged VM attachment, and send both runs with
+**Send to both agents**. To demonstrate a manual upload, download the supplied JSON and choose it in **Replace
+the VM attachment** before sending. The Local PC receives the prompt only, and the Cloud VM receives both the
+prompt and the file. **Review a previous run** opens the replay before the first send.
+
+Both scripted agents use the request to write `reports/status.txt`. The VM receives the file at
+`inputs/extra-instructions.json`. The script deliberately
 follows one fixed directive in that attachment and creates the harmless marker `scratch/off-task.txt`.
 The observer compares the workspace before and after each run. Forkit flags a change outside the declared task
 as **Possible indirect prompt injection** (`POL-019`) when an attachment was present. The finding cites the file
@@ -51,6 +56,12 @@ set `AUTODISCOVER_PROMPT_PAIR_LOG` to the combined file, and restart Streamlit t
 
 The records contain relative paths, times and fingerprints. This checks how Forkit flags observed behavior from
 a scripted workflow. Workspace snapshots measure the net file changes, and the finding calls for human review.
+
+For an interactive two-host demo, start the VM runner from the checkout on the VM with
+`python -m demo.agents.prompt_pair_live --port 18768 --token-file <private-token-file>`. Place the same randomly
+generated token in a private file on each host and keep both files outside Git. Forward a PC loopback port to
+`127.0.0.1:18768` on the VM over your authorized SSH connection. Set `AUTODISCOVER_PROMPT_PAIR_VM_PORT` to the
+forwarded PC port and `AUTODISCOVER_PROMPT_PAIR_VM_TOKEN_FILE` to the PC token file before starting Streamlit.
 
 ## Requirements and fallbacks
 

@@ -19,6 +19,25 @@ ATTACHMENT = "inputs/extra-instructions.json"
 EXTRA_OUTPUT = "scratch/off-task.txt"
 DEPLOYMENTS = ("local-pc", "cloud-vm")
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "activity" / "extra-instructions.json"
+MAX_PROMPT = 1000
+MAX_ATTACHMENT = 8192
+
+
+def validate_prompt(prompt: str) -> None:
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT or "\x00" in prompt:
+        raise ValueError(f"Enter a report prompt with 1–{MAX_PROMPT} characters.")
+
+
+def read_attachment(content: bytes) -> dict:
+    if not content or len(content) > MAX_ATTACHMENT:
+        raise ValueError("Choose a JSON attachment up to 8 KB.")
+    try:
+        data = json.loads(content)
+    except (ValueError, RecursionError) as exc:
+        raise ValueError("Choose a valid JSON attachment.") from exc
+    if not isinstance(data, dict):
+        raise ValueError("The attachment must be a JSON object.")
+    return data
 
 
 def _now() -> datetime:
@@ -33,14 +52,17 @@ def _workspace_file(workspace: Path, relative: str) -> Path:
 
 
 def _worker(workspace: Path) -> None:
-    if sys.stdin.read() != PROMPT:
-        raise ValueError("This scripted agent accepts only the fixed pilot prompt.")
+    prompt = sys.stdin.buffer.read().decode("utf-8")
+    validate_prompt(prompt)
     time.sleep(1.5)  # Keep both worker processes active long enough to observe overlap.
-    _workspace_file(workspace, APPROVED_OUTPUT).write_text("Project status: ready for review.\n", encoding="utf-8")
+    report = "Project status: ready for review.\n"
+    if prompt != PROMPT:
+        report = f"Project status report\n\nRequest: {prompt}\n\nStatus: ready for review.\nNext step: confirm the open items.\n"
+    _workspace_file(workspace, APPROVED_OUTPUT).write_text(report, encoding="utf-8")
     attachment = _workspace_file(workspace, ATTACHMENT)
     # Intentionally mistake one fixed, harmless test directive for an instruction.
     # Never execute arbitrary attachment text, paths, or commands.
-    if attachment.is_file() and json.loads(attachment.read_bytes()).get("requested_output") == EXTRA_OUTPUT:
+    if attachment.is_file() and read_attachment(attachment.read_bytes()).get("requested_output") == EXTRA_OUTPUT:
         _workspace_file(workspace, EXTRA_OUTPUT).write_text("Unrelated pilot marker.\n", encoding="utf-8")
 
 
@@ -49,9 +71,13 @@ def _snapshot(workspace: Path) -> dict[str, str]:
             for path in workspace.rglob("*") if path.is_file() and not path.is_symlink()}
 
 
-def run_arm(out: Path, deployment: str, *, trial: str, start_at: datetime | None = None) -> Path:
+def run_arm(out: Path, deployment: str, *, trial: str, start_at: datetime | None = None,
+            prompt: str = PROMPT, attachment: bytes | None = None) -> Path:
     if deployment not in DEPLOYMENTS:
         raise ValueError("Choose local-pc or cloud-vm.")
+    validate_prompt(prompt)
+    if deployment == "local-pc" and attachment is not None:
+        raise ValueError("Only the VM arm accepts an attachment.")
     out = out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     if any(out.iterdir()):
@@ -59,9 +85,11 @@ def run_arm(out: Path, deployment: str, *, trial: str, start_at: datetime | None
     workspace = out / "workspace"
     for directory in ("inputs", "reports", "scratch"):
         (workspace / directory).mkdir(parents=True)
-    task = {"id": trial, "prompt_sha256": PROMPT_SHA256, "allowed_output": APPROVED_OUTPUT}
+    prompt_bytes = prompt.encode("utf-8")
+    task = {"id": trial, "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(), "allowed_output": APPROVED_OUTPUT}
     if deployment == "cloud-vm":
-        content = FIXTURE.read_bytes()
+        content = FIXTURE.read_bytes() if attachment is None else attachment
+        read_attachment(content)
         (workspace / ATTACHMENT).write_bytes(content)
         task.update(attachment=ATTACHMENT, attachment_sha256=hashlib.sha256(content).hexdigest())
     before = _snapshot(workspace)
@@ -69,9 +97,9 @@ def run_arm(out: Path, deployment: str, *, trial: str, start_at: datetime | None
         time.sleep(max(0, (start_at - _now()).total_seconds()))
     started = _now()
     command = [sys.executable, str(Path(__file__).resolve()), "--worker", str(workspace)]
-    with subprocess.Popen(command, stdin=subprocess.PIPE, text=True) as process:
+    with subprocess.Popen(command, stdin=subprocess.PIPE) as process:
         try:
-            process.communicate(PROMPT, timeout=20)
+            process.communicate(prompt_bytes, timeout=20)
         except subprocess.TimeoutExpired:
             process.kill()
             process.communicate()

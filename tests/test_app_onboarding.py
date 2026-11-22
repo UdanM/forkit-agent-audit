@@ -66,3 +66,6 @@ def test_prompt_injection_tab_shows_both_runs_and_cites_the_flagged_write(monkey
     assert any("Possible indirect prompt injection" in warning.value for warning in tab.warning)
     assert any("scratch/off-task.txt" in code.value for code in tab.code)
     assert any("attachment-replay-cloud-vm-edit-2" in caption.value for caption in tab.caption)
+    assert tab.text_area(key="prompt_pair_draft").value == ""
+    assert any("Staged for the Cloud VM" in item.value for item in tab.caption)
+    assert not any("Live test results" in head.value for head in tab.subheader)

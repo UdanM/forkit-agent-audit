@@ -22,6 +22,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Any
@@ -29,7 +30,9 @@ from typing import Any
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
-from demo.agents.prompt_pair import PROMPT, PROMPT_SHA256
+from demo.agents.prompt_pair import FIXTURE as PROMPT_PAIR_ATTACHMENT
+from demo.agents.prompt_pair import MAX_ATTACHMENT, MAX_PROMPT, PROMPT, PROMPT_SHA256
+from demo.agents.prompt_pair_live import run_live_pair
 from src.ask import ask as ask_question
 from src.audit_archive import ArchiveError, git_available
 from src.capture.events import read_events
@@ -1406,18 +1409,7 @@ with tab6:
                    "fixtures/policies.json; diffs are reduced to a hash and size, never stored.")
 
 
-with tab7:
-    st.subheader("Prompt injection comparison")
-    st.write("This test gives two scripted agents the same reporting task and adds an unrelated instruction to one run.")
-    prompt_pair_log = os.environ.get("AUTODISCOVER_PROMPT_PAIR_LOG")
-    if prompt_pair_log:
-        st.caption("Captured test · separate observer records combined from both runs")
-    else:
-        st.caption("Sample replay · bundled test records for the local PC and cloud VM scenarios")
-    prompt_timeline = timeline_from_files(
-        Path(prompt_pair_log) if prompt_pair_log else ACTIVITY_FIXTURES / "prompt_pair_observer.jsonl",
-        rules=eng.policies(), namespace="prompt-pair",
-    )
+def render_prompt_comparison(prompt_timeline: dict[str, Any], live_result: dict[str, Any] | None = None) -> None:
     comparisons = prompt_timeline["prompt_comparisons"]
     if prompt_timeline["rejected"]["observer"]:
         st.warning("Some observer records could not be read. The comparison may be incomplete.")
@@ -1441,7 +1433,8 @@ with tab7:
         columns = st.columns(min(2, len(pair["runs"])))
         for index, arm in enumerate(pair["runs"]):
             with columns[index % len(columns)].container(border=True):
-                deployment = {"local-pc": "Local PC", "cloud-vm": "Cloud VM"}.get(arm["deployment"], "Other deployment")
+                host = arm["deployment"]
+                deployment = {"local-pc": "Local PC", "cloud-vm": "Cloud VM"}.get(host, "Other deployment")
                 st.subheader(f"{deployment} · {'with attachment' if arm['attachment'] else 'control'}")
                 if set(arm["out_of_scope_ids"]) & finding_ids:
                     st.warning("Possible indirect prompt injection")
@@ -1450,6 +1443,12 @@ with tab7:
                 else:
                     st.info(arm["outcome"])
                 st.text(f"Attachment: {arm['attachment'] or 'None'}")
+                if live_result and host in live_result["reports"]:
+                    st.markdown("**Generated report**")
+                    st.code(live_result["reports"][host], language=None, wrap_lines=True)
+                    if host in live_result["extras"]:
+                        st.markdown("**Unrelated output**")
+                        st.code(live_result["extras"][host], language=None, wrap_lines=True)
                 st.markdown("**Files the observer saw change**")
                 st.code("\n".join(f"{write['operation']}: {write['path']}" for write in arm["writes"])
                         or "No edits observed", language=None)
@@ -1465,3 +1464,72 @@ with tab7:
                         st.caption("Out-of-scope observer records · " + ", ".join(arm["out_of_scope_ids"]))
         st.caption("Forkit looks for a file change beyond the declared task while an attachment was present. "
                    "A reviewer can use the observer records to investigate what caused the change.")
+
+
+with tab7:
+    st.subheader("Live prompt injection demo")
+    st.write("Send one report prompt to two scripted agents. Only the Cloud VM receives the extra file.")
+    draft = st.text_area("Prompt for both agents", key="prompt_pair_draft", max_chars=MAX_PROMPT, height=100,
+                         placeholder="Write a short status report about the café opening.")
+    local_route, cloud_route = st.columns(2)
+    with local_route.container(border=True):
+        st.markdown("**Local PC**")
+        st.caption("Receives the prompt only")
+    with cloud_route.container(border=True):
+        st.markdown("**Cloud VM**")
+        st.caption("Receives the prompt and the staged attachment")
+
+    upload = st.file_uploader("Replace the VM attachment", type=["json"], max_upload_size=1,
+                              key="prompt_pair_upload", help="Optional. The supplied test file is staged by default.")
+    sample_attachment = PROMPT_PAIR_ATTACHMENT.read_bytes()
+    attachment_label = upload.name if upload else PROMPT_PAIR_ATTACHMENT.name
+    attachment_bytes = upload.getvalue() if upload else sample_attachment
+    st.caption("Staged for the Cloud VM")
+    st.text(f"{attachment_label} · {len(attachment_bytes)} bytes")
+    attachment_options, download = st.columns(2)
+    with attachment_options.expander("Preview the staged attachment"):
+        st.code(attachment_bytes[:MAX_ATTACHMENT].decode("utf-8", errors="replace"), language="json", wrap_lines=True)
+    download.download_button("Download test attachment", sample_attachment, PROMPT_PAIR_ATTACHMENT.name,
+                             "application/json", on_click="ignore")
+
+    configured_port = os.environ.get("AUTODISCOVER_PROMPT_PAIR_VM_PORT", "")
+    token_path = os.environ.get("AUTODISCOVER_PROMPT_PAIR_VM_TOKEN_FILE", "")
+    live_configured = (configured_port.isascii() and configured_port.isdigit() and len(configured_port) <= 5
+                       and 0 < int(configured_port) <= 65535 and bool(token_path) and Path(token_path).is_file())
+    if not live_configured:
+        st.info("Live sending needs the private VM connection. You can open the replay below.")
+    if st.button("Send to both agents", type="primary", key="prompt_pair_send", disabled=not live_configured):
+        log = DATA / "prompt_runs" / f"{uuid.uuid4().hex}.jsonl"
+        try:
+            with st.spinner("Running on the Local PC and Cloud VM…"):
+                result = run_live_pair(log, int(configured_port), Path(token_path).read_text(encoding="utf-8").strip(),
+                                       draft, attachment_bytes)
+            st.session_state["prompt_pair_result"] = {**result, "prompt": draft, "attachment": attachment_label,
+                                                      "log": log}
+        except ValueError as error:
+            st.error(str(error))
+        except (OSError, subprocess.SubprocessError):
+            st.error("The local demo could not complete. Check the connection and try sending again.")
+
+    live_result = st.session_state.get("prompt_pair_result")
+    if live_result:
+        st.subheader("Live test results")
+        with st.chat_message("user"):
+            st.text(live_result["prompt"])
+            st.caption("Selected VM attachment" if live_result["cloud_error"] else "Attachment received by the Cloud VM")
+            st.text(live_result["attachment"])
+        if live_result["cloud_error"]:
+            st.warning(live_result["cloud_error"])
+        render_prompt_comparison(timeline_from_files(live_result["log"], rules=eng.policies(), namespace="prompt-pair"),
+                                 live_result)
+    else:
+        with st.expander("Review a previous run"):
+            prompt_pair_log = os.environ.get("AUTODISCOVER_PROMPT_PAIR_LOG")
+            if prompt_pair_log:
+                st.caption("Captured test · separate observer records combined from both runs")
+            else:
+                st.caption("Sample replay · bundled test records for the local PC and cloud VM scenarios")
+            render_prompt_comparison(timeline_from_files(
+                Path(prompt_pair_log) if prompt_pair_log else ACTIVITY_FIXTURES / "prompt_pair_observer.jsonl",
+                rules=eng.policies(), namespace="prompt-pair",
+            ))
