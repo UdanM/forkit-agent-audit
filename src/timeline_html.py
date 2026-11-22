@@ -44,6 +44,7 @@ _FLAGS = {
     "approval_missing": ("no approval", "b"), "unknown_actor": ("actor unknown", "w"),
     "config_file_write": ("tool config changed", "w"), "clock_drift": ("clock drift", "w"),
     "sequence_gap": ("log gap before this", "w"),
+    "attachment_scope_mismatch": ("possible prompt injection", "b"),
 }
 
 
@@ -62,6 +63,9 @@ def activity_feed_html(timeline: dict[str, Any]) -> str:
         what = a.get("operation") or a.get("tool_call") or a["kind"]
         target = a.get("path") or a.get("target") or ""
         why = "No observed run, so the actor stays UNKNOWN" if who == UNKNOWN else f"Observed run {a['run_id']}"
+        if a.get("actor_type") == "human":
+            who = f"{who} · {'Simulated human' if a.get('simulated') else 'Human'}"
+            why = a["actor_reason"]
         if a.get("initiated_by"):
             parent = runs.get(a["initiated_by"], {}).get("label", a["initiated_by"])
             why += f", delegated by {parent}"

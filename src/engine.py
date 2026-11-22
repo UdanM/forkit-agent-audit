@@ -102,7 +102,10 @@ _SECRET_NAME = re.compile(
 )
 _URL_USERINFO = re.compile(r"(?P<scheme>[a-zA-Z][a-zA-Z0-9+.-]*://)(?P<user>[^:/@\s]+):(?P<pw>[^@\s]+)@")
 _KNOWN_TOKEN = re.compile(r"^(sk-|sk_live_|ghp_|gho_|github_pat_|xox[abp]-|AKIA|AIza|glpat-)")
-_SECRET_QUERY = re.compile(r"([?&](?:token|key|api_key|apikey|password|secret|sig)=)[^&\s]+", re.IGNORECASE)
+_SECRET_QUERY = re.compile(
+    r"([?&](?:token|access_token|refresh_token|key|api_key|apikey|password|secret|sig)=)[^&\s]+",
+    re.IGNORECASE,
+)
 
 
 def _redact_string(value: str) -> str:
@@ -278,7 +281,7 @@ def _candidates_from_config(
     candidates: list[dict[str, Any]] = []
     for tool_name, spec in sorted(servers.items()):
         spec = spec if isinstance(spec, dict) else {}
-        command = mask(str(spec.get("command") or UNKNOWN))
+        command = mask(_redact_string(str(spec.get("command") or UNKNOWN)))
         args = [mask(a) for a in _redact_args(list(spec.get("args") or []))]
         env = _redact_mapping(spec.get("env"))
         record: dict[str, Any] = {
@@ -839,6 +842,20 @@ def evaluate_policies(
 
 STORE_FILES = ("passports.json", "metadata_changes.json", "linked_events.json", "incidents.json",
                "policy_findings.json", "review_queue.json", "activity_findings.json", "log_checkpoints.json")
+PASSPORT_EXPORT_FIELDS = (
+    "passport_id", "passport_type", "tool_name", "source_path", "client", "owner", "version",
+    "access_mode", "transport", "enabled", "provenance_hash", "config_hash", "minted_at",
+)
+_CHANGE_FIELD = re.compile(r"^(command|url|version|owner|access_mode|transport|enabled|args|env|headers)\b")
+_EVENT_EXPORT_FIELDS = {
+    "linked_events.json": ("link_id", "passport_id", "approval_status", "link_consent", "attribution",
+                           "linked_at", "flags", "incident_id", "policy_flags"),
+    "incidents.json": ("incident_id", "type", "passport_id", "tool_name", "expected_behavior",
+                       "approval_status", "detected_at"),
+    "review_queue.json": ("review_id", "attribution", "candidate_passport_ids",
+                          "actor", "status", "recorded_at"),
+}
+_EVENT_ID_FIELDS = ("event_id", "approval_id", "event_claimed_approval_id", "runtime_consent_id")
 _LEAK_PATTERNS: dict[str, re.Pattern[str]] = {
     "url_password": re.compile(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^:/@\s\"]+:(?!\[REDACTED\]@)[^@\s\"]+@"),
     "token_prefix": re.compile(
@@ -897,6 +914,53 @@ def _scrub(obj: Any, raw_values: list[str]) -> Any:
     if isinstance(obj, dict):
         return {_scrub(k, raw_values): _scrub(v, raw_values) for k, v in obj.items()}
     return obj
+
+
+def _event_text(value: Any) -> str:
+    if not isinstance(value, str) or not value or not value.isprintable():
+        return UNKNOWN
+    return _scrub(value[:512], [])
+
+
+def _audit_source(value: Any) -> dict[str, str] | str:
+    if not isinstance(value, dict):
+        return UNKNOWN
+    return {k: _event_text(value[k]) for k in ("client", "server_name", "config_path") if k in value} or UNKNOWN
+
+
+def _event_metadata(event: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source": _audit_source(event.get("source")),
+        **{key: _event_text(event.get(key)) for key in ("timestamp", "tool_call", "target", "result")},
+    }
+
+
+def audit_metadata(filename: str, data: Any) -> Any:
+    """Create shareable metadata without copying local configuration details."""
+    if filename == "passports.json":
+        return {
+            pid: {key: record[key] for key in PASSPORT_EXPORT_FIELDS if key in record}
+            for pid, record in data.items()
+        }
+    if filename == "metadata_changes.json":
+        safe = []
+        for record in data:
+            fields = {match[1] for line in record.get("diff", []) if (match := _CHANGE_FIELD.match(line))}
+            safe.append({**record, "diff": [f"{key} changed" for key in sorted(fields)]})
+        return safe
+    if filename in _EVENT_EXPORT_FIELDS:
+        return [
+            {**{key: record[key] for key in _EVENT_EXPORT_FIELDS[filename] if key in record},
+             **{key: _event_text(record[key]) for key in (*_EVENT_ID_FIELDS, "reason") if key in record},
+             **_event_metadata(record)}
+            for record in data
+        ]
+    if filename == "policy_findings.json":
+        return [
+            {**record, "evidence": {k: v for k, v in record["evidence"].items() if k != "category_evidence"}}
+            for record in data
+        ]
+    return data
 
 
 def report_sha256(report: dict[str, Any]) -> str:
@@ -1028,7 +1092,8 @@ def build_audit_bundle(
     }
     for name in STORE_FILES:
         if (store / name).is_file():
-            entries[f"store/{name}"] = (store / name).read_bytes()
+            records = audit_metadata(name, json.loads((store / name).read_bytes()))
+            entries[f"store/{name}"] = (json.dumps(records, indent=2, sort_keys=True) + "\n").encode("utf-8")
     for inp in inputs or []:
         if Path(inp).is_file():
             entries[f"inputs/{Path(inp).name}"] = Path(inp).read_bytes()
@@ -1138,11 +1203,14 @@ class AutoDiscoverEngine:
 
     def save_log_checkpoint(self, label: str, observer_log: str | Path) -> str | None:
         """Remember ``LENGTH:SHA256`` of a log's complete lines under a label."""
-        from .timeline import make_checkpoint, read_log
+        from .timeline import make_checkpoint, read_log, verify_checkpoint
         data = read_log(observer_log)
         if not data:
             return None
         cps = self.log_checkpoints()
+        saved = cps.get(label, {}).get("checkpoint")
+        if saved and verify_checkpoint(data, saved) != "intact":
+            raise ValueError("The saved evidence changed. Restore the original log or choose a new source.")
         cps[label] = {"checkpoint": make_checkpoint(data), "saved_at": _now()}
         _write_json(self.checkpoints_path, cps)
         return cps[label]["checkpoint"]
@@ -1338,15 +1406,15 @@ class AutoDiscoverEngine:
                 "policy_findings": len(findings),
                 "policy_findings_by_severity": {k: v for k, v in severity.items() if v},
             },
-            "passports": [passports[k] for k in sorted(passports)],
+            "passports": list(audit_metadata("passports.json", dict(sorted(passports.items()))).values()),
             "approval_coverage": coverage,
-            "metadata_changes": changes,
-            "linked_events": links,
+            "metadata_changes": audit_metadata("metadata_changes.json", changes),
+            "linked_events": audit_metadata("linked_events.json", links),
             "missing_approval_link_ids": [x["link_id"] for x in links if x.get("approval_status") == MISSING_APPROVAL],
-            "incidents": incidents,
-            "review_queue": self.review_queue(),
+            "incidents": audit_metadata("incidents.json", incidents),
+            "review_queue": audit_metadata("review_queue.json", self.review_queue()),
             "activity": self.activity_findings(),
-            "policy_findings": findings,
+            "policy_findings": audit_metadata("policy_findings.json", findings),
             "integrity": {
                 "status": "PASS" if not mismatches else "FAIL",
                 "passports_file_present": self.passports_path.is_file(),
@@ -1411,7 +1479,7 @@ class AutoDiscoverEngine:
         Ambiguity-safe attribution, ported from UdanM/forkit-agent-audit @ 3f5b2aa
         (``Inventory.candidates``): an event links only when its own source
         evidence matches exactly one passport. Status is one of ``unique``,
-        ``ambiguous``, ``no_match`` or ``no_source_context``.
+        ``ambiguous``, ``no_match``, ``no_source_context`` or ``insufficient_source``.
         """
         name, cfg = _claimed_source(event)
         if name is None and cfg is None:
@@ -1423,8 +1491,11 @@ class AutoDiscoverEngine:
             and (name is None or p.get("tool_name") == name)
             and (cfg is None or p.get("source_path") == cfg)
         )
-        what = " @ ".join(x for x in (name, cfg) if x)
+        what = " @ ".join(_event_text(x) for x in (name, cfg) if x)
         if len(cands) == 1:
+            if name is None or cfg is None:
+                return {"status": "insufficient_source", "candidates": cands,
+                        "reason": "The event needs both its server name and config path before linking."}
             return {"status": "unique", "candidates": cands, "reason": f"Exactly one passport matches {what}."}
         if not cands:
             return {"status": "no_match", "candidates": [],
@@ -1442,7 +1513,7 @@ class AutoDiscoverEngine:
         att = self.attribution(event)
         if att["status"] == "unique":
             raise ValueError("This event can be attributed to one passport. Link it instead.")
-        event_id = event.get("event_id") or UNKNOWN
+        event_id = _event_text(event.get("event_id"))
         queue = self.review_queue()
         for item in queue:
             if item["event_id"] == event_id and event_id != UNKNOWN:
@@ -1450,11 +1521,7 @@ class AutoDiscoverEngine:
         item = {
             "review_id": "rev-" + HashEngine.hash_dict({"e": event_id, "s": att["status"]})[:12],
             "event_id": event_id,
-            "timestamp": event.get("timestamp") or UNKNOWN,
-            "source": event.get("source") or UNKNOWN,
-            "tool_call": event.get("tool_call") or UNKNOWN,
-            "target": event.get("target") or UNKNOWN,
-            "result": event.get("result") or UNKNOWN,
+            **_event_metadata(event),
             "attribution": att["status"],
             "candidate_passport_ids": att["candidates"],
             "reason": att["reason"],
@@ -1479,25 +1546,27 @@ class AutoDiscoverEngine:
         if passport is None:
             raise KeyError(f"No confirmed passport with id {passport_id}")
 
-        source = event.get("source") or {}
         claimed = _claimed_source(event)
         if claimed[0] is not None and claimed[0] != passport["tool_name"]:
-            raise ValueError(f"Event is from {claimed[0]!r}, passport is {passport['tool_name']!r}")
+            raise ValueError(f"Event is from {_event_text(claimed[0])!r}, passport is {_event_text(passport['tool_name'])!r}")
         if claimed[1] is not None and claimed[1] != passport["source_path"]:
-            raise ValueError(f"Event is from {claimed[1]!r}, passport is {passport['source_path']!r}")
+            raise ValueError(f"Event is from {_event_text(claimed[1])!r}, passport is {_event_text(passport['source_path'])!r}")
         attribution = self.attribution(event)
         if attribution["status"] != "unique":
             raise ValueError(attribution["reason"])
+        if attribution["candidates"] != [passport_id]:
+            raise ValueError("Select the uniquely matched MCP passport.")
 
-        event_id = event.get("event_id") or UNKNOWN
+        event_id = _event_text(event.get("event_id"))
         links = self.linked_events()
         for existing in links:
             if existing["event_id"] == event_id and existing["passport_id"] == passport_id and event_id != UNKNOWN:
                 return existing
 
-        tool_call = event.get("tool_call") or UNKNOWN
+        metadata = _event_metadata(event)
+        tool_call = metadata["tool_call"]
         approval = self._approval_for(passport_id, tool_call)
-        runtime_consent = event.get("runtime_consent") or {}
+        runtime_consent = event.get("runtime_consent")
         flags: list[str] = [] if approval else [MISSING_APPROVAL]
 
         incident = None
@@ -1509,11 +1578,7 @@ class AutoDiscoverEngine:
                 "passport_id": passport_id,
                 "tool_name": passport["tool_name"],
                 "event_id": event_id,
-                "timestamp": event.get("timestamp") or UNKNOWN,
-                "source": source or UNKNOWN,
-                "tool_call": tool_call,
-                "target": event.get("target") or UNKNOWN,
-                "result": event.get("result") or UNKNOWN,
+                **metadata,
                 "expected_behavior": f"{READ_ONLY} (evidence in passport args)",
                 "approval_status": APPROVED if approval else MISSING_APPROVAL,
                 "detected_at": _now(),
@@ -1523,15 +1588,12 @@ class AutoDiscoverEngine:
             "link_id": "lnk-" + HashEngine.hash_dict({"e": event_id, "p": passport_id})[:12],
             "event_id": event_id,
             "passport_id": passport_id,
-            "source": source or UNKNOWN,
-            "timestamp": event.get("timestamp") or UNKNOWN,
-            "tool_call": tool_call,
-            "target": event.get("target") or UNKNOWN,
-            "result": event.get("result") or UNKNOWN,
+            **metadata,
             "approval_status": APPROVED if approval else MISSING_APPROVAL,
-            "approval_id": approval["approval_id"] if approval else UNKNOWN,
-            "event_claimed_approval_id": event.get("approval_id") or UNKNOWN,
-            "runtime_consent_id": runtime_consent.get("consent_id") or UNKNOWN,
+            "approval_id": _event_text(approval.get("approval_id")) if approval else UNKNOWN,
+            "event_claimed_approval_id": _event_text(event.get("approval_id")),
+            "runtime_consent_id": (_event_text(runtime_consent.get("consent_id"))
+                                   if isinstance(runtime_consent, dict) else UNKNOWN),
             "link_consent": True,
             "attribution": "unique",
             "linked_at": _now(),

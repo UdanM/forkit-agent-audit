@@ -113,6 +113,8 @@ def _key(record: dict[str, Any], field: str) -> str | None:
 
 def collect_records(store_dir: str | Path) -> list[dict[str, Any]]:
     """Every archivable record in a store, as ``{kind, key, record}``. Read-only."""
+    from .engine import audit_metadata
+
     store = Path(store_dir)
     out: list[dict[str, Any]] = []
     for name, kind, field in SOURCES:
@@ -121,7 +123,7 @@ def collect_records(store_dir: str | Path) -> list[dict[str, Any]]:
             rows = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
         except (OSError, ValueError):
             continue
-        for rec in rows if isinstance(rows, list) else []:
+        for rec in audit_metadata(name, rows) if isinstance(rows, list) else []:
             key = _key(rec, field) if isinstance(rec, dict) else None
             if key:
                 out.append({"kind": kind, "key": key, "record": rec})

@@ -35,6 +35,7 @@ AutoDiscover answers that, one tab at a time:
 4. **Linking.** Actions a tool takes are filed under its ID card, only with permission. Actions without approval, or outside what the tool may do, become incidents.
 5. **Map.** One page shows the whole chain, from settings file to ID card to action to incident.
 6. **Activity timeline.** Which agent run did what, which helper it delegated to, and whether the activity log is still the one that was saved. An action nobody can be tied to stays UNKNOWN.
+7. **Testing.** Two scripted agents get the same task. Compare what changes when the VM run also receives an unrelated instruction in a file.
 
 Start it with a double-click on **`Start AutoDiscover.cmd`** (Windows) or `./start-autodiscover.sh` (macOS, Linux).
 
@@ -65,6 +66,7 @@ Start it with a double-click on **`Start AutoDiscover.cmd`** (Windows) or `./sta
 | **Git audit archive** | Every link, incident, review item, drift record and activity finding in an append-only bare Git repo; rewrites and replaced histories fail verification | sidebar · [details](#append-only-git-archive) |
 | **Delegated-helper pilot** | Real worker processes; a helper declared read-only edits a protected file and its own report says otherwise | Live agents scenario F |
 | **Ask Forkit** | Short questions answered from records with citations; optional local model, loopback only | expander under the header |
+| **Prompt injection comparison** | Match prompt hashes and compare overlapping runs. An observer flags the VM run's unrelated file change and shows the source record. | Testing tab · [details](demo/agents/README.md#prompt-injection-comparison) |
 
 | File | Purpose |
 |---|---|
@@ -185,7 +187,7 @@ download the report alone.
 |---|---|
 | `report.json` | Summary counts, confirmed passports, approval coverage, metadata diffs, consented event links, `MISSING_APPROVAL` link IDs, incidents, policy findings, integrity and secret-scan verdicts |
 | `report.md` | The same report as readable tables |
-| `store/*.json` | The exact store files the report was built from |
+| `store/*.json` | Metadata projections of the store records, with fingerprints and changed field names in place of raw config details |
 | `inputs/approvals.json`, `inputs/policies.json` | The approvals and rules that were applied |
 | `SHA256SUMS` | `sha256sum -c`-compatible checksums, with POSIX `/` paths |
 
@@ -414,8 +416,22 @@ git --git-dir data/audit-archive.git show main:records.jsonl
 ```
 
 ### Ask Forkit
-The **Ask Forkit** expander answers questions like "What needs review?", "Who changed
-reports/q3/summary.md?" or "Which tools did you find?" from the local records, with a citation per claim.
+**Ask Forkit** answers from the local records and cites the evidence. In demo mode, try:
+
+1. “Tell me about the Report helper.”
+2. “Who is the parent of this subagent?”
+3. “When did it write summary.md?”
+4. “Who was the human in the workflow?” or “Which files did Maya Chen change?”
+
+You can ask about recorded agent IDs, access, deployment, actions, and findings by name or run ID.
+A follow-up uses the previous agent when you say “it” or “this subagent”. Ambiguous names require
+clarification. Open **Activity timeline** from an answer to see the cited run or action.
+The demo and delegated pilot include explicitly simulated human edits. An observer can identify
+a real human edit with `actor_type: "human"`, a human ID or label, and a null agent run ID.
+Events without actor evidence still stay UNKNOWN.
+
+Existing questions such as “What needs review?”, “Who changed reports/q3/summary.md?”, and
+“Which tools did you find?” still work.
 Set `AUTODISCOVER_ASK_MODEL` to an installed Ollama model to have the answer rephrased locally: the model
 gets short evidence lines only, over loopback, and its answer is dropped unless every citation is valid.
 
@@ -440,7 +456,7 @@ up as drift. `fixtures/` itself is never modified.
 | `cursor_mcp.json` | A second `postgres-mcp` pointing at a different database |
 | `claude_desktop_config_v2.json` | `filesystem-mcp` with `ro` removed and a `finance` mount added |
 | `runtime_events.jsonl` | `evt-0001` approved read, `evt-0002` unauthorized `fs.write_file`, `evt-0003` unapproved Cursor `pg.query`, `evt-0004` names only the shared `postgres-mcp` (ambiguous), `evt-0005` has no source (delete attempt) |
-| `activity/observer.jsonl` | Observer log: a report agent, its read-only helper writing a protected file, a Cursor run editing `.cursor/mcp.json`, a sequence gap, clock drift, two unknown actors, an access escalation, missing onboarding |
+| `activity/observer.jsonl` | Observer log: a report agent, two edits by a simulated human reviewer, a read-only helper writing a protected file, a Cursor config edit, sequence and clock discrepancies, unknown actors, and access and onboarding findings |
 | `activity/agent_reported.jsonl` | The helper's own report, which disagrees with the observer |
 | `approvals.json` | `filesystem-mcp` approved for read actions only; Claude `postgres-mcp` pending; Cursor `postgres-mcp` has no record |
 

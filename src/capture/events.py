@@ -42,8 +42,10 @@ def mask_home(value: str, home: str | None = None) -> str:
 
 def relative_to_base(value: str, base: str | None) -> str:
     """A path inside ``base`` (the agent's working folder) is stored relative to it, machine-independent."""
-    if base and value.startswith(base.rstrip("/\\") + os.sep):
-        return value[len(base.rstrip("/\\")) + 1:].replace("\\", "/")
+    prefix = base.replace("\\", "/").rstrip("/") + "/" if base else ""
+    normalized = value.replace("\\", "/")
+    if prefix and normalized.startswith(prefix):
+        return normalized[len(prefix):]
     return value
 
 

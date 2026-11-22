@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from demo.agents.pilot import run_pilot
+from src.ask import answer_from_records
 from src.engine import load_policies
 from src.timeline import timeline_from_files
 
@@ -26,9 +27,13 @@ def test_pilot_observes_two_processes_and_the_helper_write(tmp_path: Path) -> No
     assert helper["delegated_by"] == res["parent_run"] and helper["access"] == "read_only"
     assert isinstance(helper["pid"], int) and helper["pid"] != runs[res["parent_run"]]["pid"]
     writes = {a["path"]: a for a in tl["actions"]}
-    assert writes["reports/draft.md"]["operation"] == "create"
+    assert any(a["path"] == "reports/draft.md" and a["operation"] == "create"
+               and a["actor"] == "Report agent" for a in tl["actions"])
     assert writes["reports/summary.md"]["actor"] == "Report helper"
     assert writes["reports/summary.md"]["initiated_by"] == res["parent_run"]
+    assert [a["actor"] for a in tl["actions"]] == ["Report agent", "Maya Chen", "Report helper", "Maya Chen"]
+    assert all(a["simulated"] and a["run_id"] is None for a in tl["actions"] if a["actor_type"] == "human")
+    assert "Maya Chen" in answer_from_records("Who was the human in the workflow?", {"timeline": tl})["answer"]
     assert {"POL-007", "POL-008", "POL-009", "POL-015"} <= {f["rule_id"] for f in tl["findings"]}
     verdicts = {r["label"]: r["verdict"] for r in tl["self_reported"] if r["kind"] == "run_started"}
     assert verdicts == {"Report agent": "confirmed", "Read-only finisher": "disagrees with observer"}

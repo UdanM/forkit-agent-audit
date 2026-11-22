@@ -193,6 +193,16 @@
         "check": "run_reuse"
       },
       "explanation": "Two runs started with the same run reference, so which execution did what is UNKNOWN."
+    },
+    {
+      "rule_id": "POL-019",
+      "title": "Possible indirect prompt injection",
+      "severity": "high",
+      "applies_to": "activity",
+      "when": {
+        "check": "attachment_scope_mismatch"
+      },
+      "explanation": "An untrusted attachment was present and the observer recorded a file change outside the approved task scope. Review the attachment and the action before attributing a cause."
     }
   ]
 }

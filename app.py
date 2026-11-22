@@ -22,6 +22,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,9 @@ from typing import Any
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
+from demo.agents.prompt_pair import FIXTURE as PROMPT_PAIR_ATTACHMENT
+from demo.agents.prompt_pair import MAX_ATTACHMENT, MAX_PROMPT, PROMPT, PROMPT_SHA256
+from demo.agents.prompt_pair_live import run_live_pair
 from src.ask import ask as ask_question
 from src.audit_archive import ArchiveError, git_available
 from src.capture.events import read_events
@@ -47,7 +51,7 @@ from src.engine import (
     workspace_config_locations,
 )
 from src.live_map_html import lifecycle_html, live_map_html
-from src.timeline import timeline_from_files
+from src.timeline import make_checkpoint, read_log, timeline_from_files
 from src.timeline_html import activity_feed_html, findings_html
 
 KIND_LABELS = {"mcp_server": "MCP server", "cli_tool": "CLI", "desktop_app": "Desktop app",
@@ -694,26 +698,39 @@ def activity_sources() -> tuple[str, Path | None, Path | None]:
 def ask_store() -> dict[str, Any]:
     """Everything Ask AutoDiscover may cite, read-only."""
     label, obs, rep = activity_sources()
-    tl = timeline_from_files(obs, rep, rules=eng.policies(), namespace=label) if obs else None
+    checkpoint = eng.log_checkpoints().get(label, {}).get("checkpoint")
+    tl = timeline_from_files(obs, rep, rules=eng.policies(), namespace=label, checkpoint=checkpoint) if obs else None
     return {"passports": eng.passports(), "links": eng.linked_events(), "incidents": eng.incidents(),
             "review_queue": eng.review_queue(), "policy_findings": audit["policy_findings"], "timeline": tl}
 
 
 with st.container(border=True, key="askpanel"):
     st.markdown("#### Ask Forkit")
-    st.caption("Ask about changes, tools, or findings. Try “What needs review?” or “Who changed "
-               "reports/q3/summary.md?”")
+    st.caption("Try “Who is the parent of the Report helper?”, “What did it change?”, or "
+               "“Who was the human in the workflow?”")
+    ask_label, ask_observer, ask_report = activity_sources()
     q_col, b_col = st.columns([6, 1])
     question = q_col.text_input("Question about Forkit records", key="ask_q", label_visibility="collapsed",
                                 max_chars=240, placeholder="Ask about a file, run, or event")
-    if b_col.button("Ask", width="stretch", type="primary") and question.strip():
-        st.session_state.ask_result = ask_question(question, ask_store())
-    res = st.session_state.get("ask_result")
+    submitted = b_col.button("Ask", width="stretch", type="primary") and question.strip()
+    ask_scope = None
+    if submitted or st.session_state.get("ask_result"):
+        saved = eng.log_checkpoints().get(ask_label, {}).get("checkpoint")
+        ask_scope = (ask_label, saved, tuple((str(path), make_checkpoint(read_log(path)))
+                                            for path in (ask_observer, ask_report) if path))
+    previous = st.session_state.get("ask_result") if st.session_state.get("ask_scope") == ask_scope else None
+    if submitted:
+        st.session_state.ask_result = ask_question(question, ask_store(), subject=(previous or {}).get("subject"))
+        st.session_state.ask_scope = ask_scope
+    res = st.session_state.get("ask_result") if st.session_state.get("ask_scope") == ask_scope else None
     if res:
         st.markdown(f"**{html.escape(res['answer'])}**")
         for c in res["citations"]:
             st.markdown(f'{badge(c["kind"], "neutral")} <span class="mono">{html.escape(c["id"])}</span> '
                         f'{html.escape(c["text"])}', unsafe_allow_html=True)
+        if any(c["kind"] in ("run", "action") for c in res["citations"]):
+            if st.button("Open Activity timeline", key="ask_open_timeline"):
+                st.session_state.active_tab = "Activity timeline"
         st.caption(f"Answered from {res.get('source', 'records')}. Matching runs on local records only"
                    + ("" if res.get("source", "records") != "records" else
                       "; set AUTODISCOVER_ASK_MODEL to an installed Ollama model to have it rephrased locally") + ".")
@@ -807,9 +824,9 @@ elif proof:
         st.json({"before_restart": proof["before"], "after_restart": proof["after"]})
 
 # Keyed, stateful tabs: clicking a button inside a tab keeps you on that tab.
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
     ["Tools", "Passports", "Changes", "Event review",
-     "Map", "Activity timeline"],
+     "Map", "Activity timeline", "Testing"],
     key="active_tab",
     on_change="rerun",
 )
@@ -1112,17 +1129,15 @@ with tab4:
                     all_ok = st.checkbox(f"I grant explicit consent to link all {len(unlinked)} captured events",
                                          key="consent_all_agents")
                     if st.button("Link all captured actions", width="stretch"):
-                        by_src = {(p["source_path"], p["tool_name"]): pid for pid, p in passports.items()}
                         try:
-                            done = [eng.link_event(e, by_src[(e["source"]["config_path"], e["source"]["server_name"])],
-                                                   user_consent=all_ok)
-                                    for e in unlinked
-                                    if (e["source"]["config_path"], e["source"]["server_name"]) in by_src]
+                            matches = [(event, eng.attribution(event)) for event in unlinked]
+                            done = [eng.link_event(event, match["candidates"][0], user_consent=all_ok)
+                                    for event, match in matches if match["status"] == "unique"]
                             refresh_policies()
                             st.session_state.last_link = done[-1] if done else None
                             st.session_state.last_error = None
-                        except PermissionError as exc:
-                            st.session_state.last_error = f"PermissionError: {exc}"
+                        except (PermissionError, ValueError, KeyError) as exc:
+                            st.session_state.last_error = f"{type(exc).__name__}: {exc}"
                         st.rerun()
         left, right = st.columns([1, 1])
         with left:
@@ -1145,6 +1160,7 @@ with tab4:
             else:
                 match = pids[0]
                 title = {"ambiguous": "Ambiguous source", "no_source_context": "No source context",
+                         "insufficient_source": "More source details needed",
                          "no_match": "Tool not registered yet"}[att["status"]]
                 st.warning(f"**{title}.** {att['reason']} "
                            + ("Register it in **Passports** to link this action. "
@@ -1170,7 +1186,8 @@ with tab4:
             target = st.selectbox("Tool it belongs to", pids, index=pids.index(match),
                                   format_func=labels.get, key=f"target_{ev_id}")
             consent = st.checkbox("I give consent to link this action to the tool", key=f"consent_{ev_id}")
-            if st.button("Link action to tool", type="primary", width="stretch"):
+            if st.button("Link action to tool", type="primary", width="stretch",
+                         disabled=att["status"] != "unique"):
                 try:
                     st.session_state.last_link = eng.link_event(event, target, user_consent=consent)
                     refresh_policies()
@@ -1350,8 +1367,11 @@ with tab6:
         b1, b2, b3 = st.columns(3)
         if b1.button("Save log checkpoint", width="stretch",
                      help="Remembers LENGTH:SHA256 of the log as it is now. Later reads must start with the same bytes."):
-            cp = eng.save_log_checkpoint(label, obs_log)
-            st.session_state.flash = ("success", f"Checkpoint saved: `{cp[:28]}...`" if cp else "Log is empty.")
+            try:
+                cp = eng.save_log_checkpoint(label, obs_log)
+                st.session_state.flash = ("success", f"Checkpoint saved: `{cp[:28]}...`" if cp else "Log is empty.")
+            except ValueError as exc:
+                st.session_state.flash = ("error", str(exc))
             st.rerun()
         if demo_mode():
             if b2.button("Simulate log tampering", width="stretch",
@@ -1369,23 +1389,34 @@ with tab6:
                     "invalid": ("Saved checkpoint is invalid", "bad")}[tl["checkpoint"]]
         changes = [x for x in tl["actions"] if x.get("path")]
         unknown = sum(x["actor"] == UNKNOWN for x in changes)
-        helped = sum(bool(x.get("initiated_by")) for x in changes)
+        human_changes = [x for x in changes if x["actor_type"] == "human" and x["actor"] != UNKNOWN]
+        simulated = sum(change.get("simulated", False) for change in human_changes)
+        helped = sum(x["actor_type"] == "agent" and x["initiated_by"] not in (None, UNKNOWN) for x in changes)
         order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         fnd = sorted(tl["findings"], key=lambda f: order.get(f["severity"], 9))
         sev = {k: sum(f["severity"] == k for f in fnd) for k in order}
         log_line = {"none": "The log has no saved checkpoint yet, so later edits to it could go unnoticed.",
-                    "intact": "The log still matches its saved checkpoint: nobody has edited it since.",
+                    "intact": "The saved portion of the log still matches its checkpoint.",
                     "rewritten": "Someone rewrote the log after the checkpoint was saved. Treat it as untrustworthy.",
                     "truncated": "Someone cut lines from the log after the checkpoint was saved.",
                     "invalid": "The saved checkpoint is damaged, so the log cannot be checked."}[tl["checkpoint"]]
-        lines = [f"<b>{len(tl['runs'])} agent runs</b> made <b>{len(changes)} file changes</b>"
-                 + (f", {helped} of them by a helper working for another agent" if helped else "") + ".",
-                 (f"<b>{unknown} change{'s' if unknown != 1 else ''}</b> could not be tied to any agent, so the actor "
-                  "stays UNKNOWN." if unknown else "Every change is tied to an observed agent run."),
-                 log_line,
+        lines = [f"The observer recorded <b>{len(tl['runs'])} agent runs</b> and <b>{len(changes)} file changes</b>"
+                 + (f", {helped} by an agent acting for another run" if helped else "") + "."]
+        if human_changes:
+            count = len(human_changes)
+            qualifier = f" ({simulated} simulated)" if simulated else ""
+            lines.append(f"<b>{count} file change{'s' if count != 1 else ''}</b> attributed to people{qualifier}.")
+        if unknown:
+            lines.append(f"<b>{unknown} change{'s' if unknown != 1 else ''}</b> could not be tied to a known actor, "
+                         "so the actor stays UNKNOWN.")
+        elif changes and not human_changes:
+            lines.append("Every change is tied to an observed agent run.")
+        if tl["checkpoint"] in ("rewritten", "truncated", "invalid"):
+            lines = ["The timeline is withheld because the log failed its checkpoint."]
+        lines.extend([log_line,
                  (f"<b>{len(fnd)} thing{'s' if len(fnd) != 1 else ''} need a person to look</b>"
                   + " (" + ", ".join(f"{n} {k}" for k, n in sev.items() if n) + "). Most serious: "
-                  + html.escape(fnd[0]["title"]) + "." if fnd else "No activity rule fired.")]
+                  + html.escape(fnd[0]["title"]) + "." if fnd else "No activity rule fired.")])
         st.markdown(f'<div class="card"><h4>In plain words {badge(cp_state[0], cp_state[1])}</h4>'
                     + "".join(f'<div style="margin:4px 0">{ln}</div>' for ln in lines) + "</div>",
                     unsafe_allow_html=True)
@@ -1408,24 +1439,27 @@ with tab6:
             col = st.column_config.TextColumn
             st.markdown("**Runs and delegation** · one agent identity can have many runs; a helper keeps its own run")
             st.dataframe([{
-                "run": r["run_id"], "label": r["label"], "agent": short(r["agent"]) if r["agent"] != UNKNOWN else UNKNOWN,
+                "record": r["record_id"], "run": r["run_id"], "label": r["label"],
+                "agent": short(r["agent"]) if r["agent"] != UNKNOWN else UNKNOWN,
                 "delegated_by": r["delegated_by"] or "", "access": r["access"], "tool": r["tool"],
                 "started": r["started_at"], "pid": r["pid"] if r["pid"] is not None else "",
             } for r in tl["runs"]], width="stretch", hide_index=True, column_config={
-                "run": col("Run"), "label": col("Label"),
+                "record": col("Record"), "run": col("Run"), "label": col("Label"),
                 "agent": col("Agent ID", help="From deployment + agent_id + instance_id on the observer's run record."),
                 "delegated_by": col("Delegated by"), "access": col("Access"), "tool": col("Tool"),
                 "started": col("Started"), "pid": col("PID"),
             })
             st.markdown("**All actions**")
             st.dataframe([{
-                "record": a["record_id"], "time": a["time"], "actor": a["actor"], "why": a["actor_reason"],
+                "record": a["record_id"], "time": a["time"], "actor": a["actor"], "actor_type": a["actor_type"],
+                "why": a["actor_reason"],
                 "initiated_by": a["initiated_by"] or "", "action": a.get("operation") or a.get("tool_call", ""),
                 "path_or_target": a.get("path") or a.get("target", ""),
                 "approval": {True: "yes", False: "no"}.get(a.get("approval"), UNKNOWN),
                 "protected": {True: "yes", False: "no"}.get(a.get("protected"), UNKNOWN),
             } for a in tl["actions"]], width="stretch", hide_index=True, column_config={
-                "record": col("Record"), "time": col("Time"), "actor": col("Actor"), "why": col("Actor evidence"),
+                "record": col("Record"), "time": col("Time"), "actor": col("Actor"),
+                "actor_type": col("Actor type"), "why": col("Actor evidence"),
                 "initiated_by": col("Initiated by"), "action": col("Action"),
                 "path_or_target": col("Path / target", width="large"), "approval": col("Approval"),
                 "protected": col("Protected"),
@@ -1440,5 +1474,130 @@ with tab6:
                     "record": r["record_id"], "run": r["run_id"], "claim": r.get("path") or r.get("label") or r["kind"],
                     "verdict": r["verdict"],
                 } for r in tl["self_reported"]], width="stretch", hide_index=True)
-        st.caption("Evidence model ported from UdanM/forkit-agent-audit. Rules POL-006 to POL-018 live in "
+        st.caption("Evidence model ported from UdanM/forkit-agent-audit. Rules POL-006 to POL-019 live in "
                    "fixtures/policies.json; diffs are reduced to a hash and size, never stored.")
+
+
+def render_prompt_comparison(prompt_timeline: dict[str, Any], live_result: dict[str, Any] | None = None) -> None:
+    comparisons = prompt_timeline["prompt_comparisons"]
+    if prompt_timeline["rejected"]["observer"]:
+        st.warning("Some observer records could not be read. The comparison may be incomplete.")
+    if not comparisons:
+        st.info("No usable comparison records are available.")
+    finding_ids = {record_id for item in prompt_timeline["findings"] if item["rule_id"] == "POL-019"
+                   for record_id in item["record_ids"]}
+    for pair in comparisons:
+        if len(comparisons) > 1:
+            st.text(f"Trial: {pair['id']}")
+        same_prompt = {True: "Same prompt", False: "Different prompts", None: UNKNOWN}[pair["same_prompt"]]
+        overlap = {True: "Overlapping runs", False: "Runs did not overlap", None: UNKNOWN}[pair["overlap"]]
+        prompt_col, timing_col = st.columns(2)
+        prompt_col.metric("Prompt match", same_prompt)
+        timing_col.metric("Timing", overlap)
+        if pair["same_prompt"] and pair["runs"][0]["prompt_sha256"] == PROMPT_SHA256:
+            st.write(f"**Task** · {PROMPT}")
+        elif pair["same_prompt"] is None:
+            st.info("A comparison needs one control run and one run with an attachment from separate deployments.")
+
+        columns = st.columns(min(2, len(pair["runs"])))
+        for index, arm in enumerate(pair["runs"]):
+            with columns[index % len(columns)].container(border=True):
+                host = arm["deployment"]
+                deployment = {"local-pc": "Local PC", "cloud-vm": "Cloud VM"}.get(host, "Other deployment")
+                st.subheader(f"{deployment} · {'with attachment' if arm['attachment'] else 'control'}")
+                if set(arm["out_of_scope_ids"]) & finding_ids:
+                    st.warning("Possible indirect prompt injection")
+                elif arm["outcome"] == "Within task scope":
+                    st.success(arm["outcome"])
+                else:
+                    st.info(arm["outcome"])
+                st.text(f"Attachment: {arm['attachment'] or 'None'}")
+                if live_result and host in live_result["reports"]:
+                    st.markdown("**Generated report**")
+                    st.code(live_result["reports"][host], language=None, wrap_lines=True)
+                    if host in live_result["extras"]:
+                        st.markdown("**Unrelated output**")
+                        st.code(live_result["extras"][host], language=None, wrap_lines=True)
+                st.markdown("**Files the observer saw change**")
+                st.code("\n".join(f"{write['operation']}: {write['path']}" for write in arm["writes"])
+                        or "No edits observed", language=None)
+                with st.expander("Source and timestamps"):
+                    st.text(f"Started: {arm['started_at']}\nFinished: {arm['completed_at'] or UNKNOWN}")
+                    st.text(f"Expected file: {arm['allowed_output']}\nRun record: {arm['record_id']}")
+                    st.text(f"Prompt SHA-256: {arm['prompt_sha256']}")
+                    if arm["attachment_sha256"]:
+                        st.text(f"Attachment SHA-256: {arm['attachment_sha256']}")
+                    for write in arm["writes"]:
+                        st.text(f"{write['time']} · {write['operation']} {write['path']} · {write['record_id']}")
+                    if arm["out_of_scope_ids"]:
+                        st.caption("Out-of-scope observer records · " + ", ".join(arm["out_of_scope_ids"]))
+        st.caption("Forkit looks for a file change beyond the declared task while an attachment was present. "
+                   "A reviewer can use the observer records to investigate what caused the change.")
+
+
+with tab7:
+    st.write("Send one report prompt to two scripted agents. Only the Cloud VM receives the extra file.")
+    draft = st.text_area("Prompt for both agents", key="prompt_pair_draft", max_chars=MAX_PROMPT, height=100,
+                         placeholder="Write a short status report about the café opening.")
+    local_route, cloud_route = st.columns(2)
+    with local_route.container(border=True):
+        st.markdown("**Local PC**")
+        st.caption("Receives the prompt only")
+    with cloud_route.container(border=True):
+        st.markdown("**Cloud VM**")
+        st.caption("Receives the prompt and the staged attachment")
+
+    upload = st.file_uploader("Replace the VM attachment", type=["json"], max_upload_size=1,
+                              key="prompt_pair_upload", help="Optional. The supplied test file is staged by default.")
+    sample_attachment = PROMPT_PAIR_ATTACHMENT.read_bytes()
+    attachment_label = upload.name if upload else PROMPT_PAIR_ATTACHMENT.name
+    attachment_bytes = upload.getvalue() if upload else sample_attachment
+    st.caption("Staged for the Cloud VM")
+    st.text(f"{attachment_label} · {len(attachment_bytes)} bytes")
+    attachment_options, download = st.columns(2)
+    with attachment_options.expander("Preview the staged attachment"):
+        st.code(attachment_bytes[:MAX_ATTACHMENT].decode("utf-8", errors="replace"), language="json", wrap_lines=True)
+    download.download_button("Download test attachment", sample_attachment, PROMPT_PAIR_ATTACHMENT.name,
+                             "application/json", on_click="ignore")
+
+    configured_port = os.environ.get("AUTODISCOVER_PROMPT_PAIR_VM_PORT", "")
+    token_path = os.environ.get("AUTODISCOVER_PROMPT_PAIR_VM_TOKEN_FILE", "")
+    live_configured = (configured_port.isascii() and configured_port.isdigit() and len(configured_port) <= 5
+                       and 0 < int(configured_port) <= 65535 and bool(token_path) and Path(token_path).is_file())
+    if not live_configured:
+        st.info("Live sending needs the private VM connection. You can open the replay below.")
+    if st.button("Send to both agents", type="primary", key="prompt_pair_send", disabled=not live_configured):
+        log = DATA / "prompt_runs" / f"{uuid.uuid4().hex}.jsonl"
+        try:
+            with st.spinner("Running on the Local PC and Cloud VM…"):
+                result = run_live_pair(log, int(configured_port), Path(token_path).read_text(encoding="utf-8").strip(),
+                                       draft, attachment_bytes)
+            st.session_state["prompt_pair_result"] = {**result, "prompt": draft, "attachment": attachment_label,
+                                                      "log": log}
+        except ValueError as error:
+            st.error(str(error))
+        except (OSError, subprocess.SubprocessError):
+            st.error("The local demo could not complete. Check the connection and try sending again.")
+
+    live_result = st.session_state.get("prompt_pair_result")
+    if live_result:
+        st.subheader("Live test results")
+        with st.chat_message("user"):
+            st.text(live_result["prompt"])
+            st.caption("Selected VM attachment" if live_result["cloud_error"] else "Attachment received by the Cloud VM")
+            st.text(live_result["attachment"])
+        if live_result["cloud_error"]:
+            st.warning(live_result["cloud_error"])
+        render_prompt_comparison(timeline_from_files(live_result["log"], rules=eng.policies(), namespace="prompt-pair"),
+                                 live_result)
+    else:
+        with st.expander("Review a previous run"):
+            prompt_pair_log = os.environ.get("AUTODISCOVER_PROMPT_PAIR_LOG")
+            if prompt_pair_log:
+                st.caption("Captured test · separate observer records combined from both runs")
+            else:
+                st.caption("Sample replay · bundled test records for the local PC and cloud VM scenarios")
+            render_prompt_comparison(timeline_from_files(
+                Path(prompt_pair_log) if prompt_pair_log else ACTIVITY_FIXTURES / "prompt_pair_observer.jsonl",
+                rules=eng.policies(), namespace="prompt-pair",
+            ))

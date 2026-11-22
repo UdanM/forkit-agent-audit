@@ -67,8 +67,8 @@ Main engine entry points: `discover_tools`, `scan_local_machine`, `derive_passpo
   `passport_id`, following Forkit's identity spec §2.1. All writes are atomic (`_write_json`).
 
 **Consented linking.**
-- `link_event` raises `PermissionError` without `user_consent=True`, `KeyError` for an unknown passport,
-  and `ValueError` when the event's source names another tool or file. No false attribution is possible.
+- `link_event` requires explicit consent and a unique MCP passport that matches both the server name and
+  config path. A partial source stays unlinked even if only one passport has been registered.
 - Approval status is checked against `approvals.json` (`APPROVED` or `MISSING_APPROVAL`).
 - A mutating call (`write`, `delete`, …) from a proven read-only tool records an
   `OUT_OF_EXPECTED_BEHAVIOR` incident. Re-linking the same event doesn't create a duplicate.
@@ -85,6 +85,14 @@ Main engine entry points: `discover_tools`, `scan_local_machine`, `derive_passpo
 - `build_audit_bundle` refuses with `PermissionError` on any leak, and the UI then hides the download.
 - The report carries `report_sha256` (sha256 over the sort_keys JSON without that field). The ZIP also
   has `SHA256SUMS`.
+- Exported passports include only inventory metadata and fingerprints. Config drift exports name the
+  fields that changed without including their values. The bundle can verify IDs against the exported
+  provenance hash. Recomputing that hash from the underlying config requires the full local record.
+
+**Activity evidence.** Timeline actions and delegation refer to observed runs in the same deployment.
+A run must start by the time the action occurs. An unchecked append cannot establish attribution for
+an action inside a saved checkpoint. When a log is rewritten, truncated, or has an invalid checkpoint,
+the dashboard and Ask only show the integrity finding and unconfirmed self-reports for that log.
 
 **Real machine scan.**
 - `known_config_locations` covers Claude Desktop, Cursor and VS Code on Windows, macOS and Linux.
