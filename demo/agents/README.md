@@ -36,7 +36,7 @@ workspace around each worker; it does not enforce OS permissions.
 
 ## Prompt injection comparison
 
-Open **Prompt injection** to type a report prompt, preview the staged VM attachment, and send both runs with
+Open **Testing** to type a report prompt, preview the staged VM attachment, and send both runs with
 **Send to both agents**. To demonstrate a manual upload, download the supplied JSON and choose it in **Replace
 the VM attachment** before sending. The Local PC receives the prompt only, and the Cloud VM receives both the
 prompt and the file. **Review a previous run** opens the replay before the first send.

@@ -826,7 +826,7 @@ elif proof:
 # Keyed, stateful tabs: clicking a button inside a tab keeps you on that tab.
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
     ["Tools", "Passports", "Changes", "Event review",
-     "Map", "Activity timeline", "Prompt injection"],
+     "Map", "Activity timeline", "Testing"],
     key="active_tab",
     on_change="rerun",
 )
@@ -1467,7 +1467,6 @@ def render_prompt_comparison(prompt_timeline: dict[str, Any], live_result: dict[
 
 
 with tab7:
-    st.subheader("Live prompt injection demo")
     st.write("Send one report prompt to two scripted agents. Only the Cloud VM receives the extra file.")
     draft = st.text_area("Prompt for both agents", key="prompt_pair_draft", max_chars=MAX_PROMPT, height=100,
                          placeholder="Write a short status report about the café opening.")
