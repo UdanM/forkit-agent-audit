@@ -1,0 +1,48 @@
+# Dark navy and lavender skin, matched to the teammate's dashboard
+# (UdanM/forkit-agent-audit @ 3f5b2aa, index.html) so both halves of the demo look the same.
+# System fonts only, so it renders the same offline.
+
+[theme]
+base = "dark"
+primaryColor = "#BEAFFF"
+backgroundColor = "#090C18"
+secondaryBackgroundColor = "#131A30"
+textColor = "#EEF1FF"
+linkColor = "#C6B9FF"
+borderColor = "#2D3654"
+showWidgetBorder = true
+baseRadius = "0.6rem"
+baseFontSize = 16
+font = "'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif"
+headingFont = "'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif"
+codeFont = "'JetBrains Mono', Consolas, 'SF Mono', Menlo, monospace"
+headingFontWeights = [700, 700, 650, 650, 600, 600]
+headingFontSizes = ["2rem", "1.3rem", "1.14rem", "1rem", "0.95rem", "0.9rem"]
+dataframeHeaderBackgroundColor = "#171E36"
+dataframeBorderColor = "#2D3654"
+codeTextColor = "#C6B9FF"
+codeBackgroundColor = "#171E36"
+greenColor = "#7FE0BE"
+greenBackgroundColor = "#153632"
+greenTextColor = "#AFF3DC"
+yellowColor = "#FFC988"
+yellowBackgroundColor = "#392C25"
+yellowTextColor = "#FFDB9D"
+blueColor = "#9EC3FF"
+blueBackgroundColor = "#1B2445"
+blueTextColor = "#C9DBFF"
+redColor = "#FF8FA3"
+redBackgroundColor = "#3A1A26"
+redTextColor = "#FFC2CD"
+orangeColor = "#FFB27A"
+orangeBackgroundColor = "#3A2619"
+orangeTextColor = "#FFD0A8"
+
+[theme.sidebar]
+backgroundColor = "#0D1122"
+secondaryBackgroundColor = "#131A30"
+borderColor = "#232943"
+showSidebarBorder = true
+
+[client]
+toolbarMode = "minimal"

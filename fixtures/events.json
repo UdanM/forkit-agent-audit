@@ -1,5 +1,0 @@
-[
-  {"id":"evt-104","name":"workspace-search","config":"editor","source":"Editor audit fixture","timestamp":"2026-11-20T17:42:00Z","action":"Workspace search","approval":null},
-  {"id":"evt-105","name":"workspace-search","config":null,"source":"Gateway audit fixture","timestamp":"2026-11-20T17:45:00Z","action":"Workspace search","approval":null},
-  {"id":"evt-106","name":"workspace-search","config":"unknown-client","source":"Migration audit fixture","timestamp":"2026-11-20T17:47:00Z","action":"Attempted external write","approval":null,"expected":"Read-only workspace search"}
-]

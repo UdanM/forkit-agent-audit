@@ -1,0 +1,4 @@
+# AutoDiscover demo dependencies.
+# The Forkit Core package (forkit/) is imported straight from this repo and has no hard dependencies.
+streamlit>=1.67,<2   # tested on 1.67.0; stateful tabs (st.tabs key/on_change) need a recent release
+pytest>=7.0

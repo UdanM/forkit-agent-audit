@@ -1,2 +1,0 @@
-{"id":"report-001","time":"2026-11-20T17:39:17Z","kind":"run_started","run_id":"editor-helper","tool":"editor","label":"Helper as reported by the agent"}
-{"id":"report-002","time":"2026-11-20T17:40:32Z","kind":"file_write","run_id":"editor-helper","path":"reports/editor/summary.md","operation":"write"}

@@ -1,152 +1,517 @@
-# Forkit AI local prototype
+# forkit-core
 
-Double-click **Start Forkit.cmd** on Windows to start the server and open the browser. Keep the launcher window open while using the demo. You can also start it from this directory with **Python 3.10+**. No packages or credentials are required.
+**Open-source AI passports with deterministic IDs and lineage.**
 
-~~~powershell
-python app.py
-~~~
+Portable passports for AI models and agents: deterministic IDs, provenance links, artifact hashes, lineage records, and CI-friendly validation.
 
-Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Use an unused database filename with `--db` to start with fresh demo state.
+## Try it in 30 seconds
 
-## Demo walkthrough
+```bash
+git clone https://github.com/Forkit-Dev-Core/Forkit_Dev.git
+cd Forkit_Dev
+pip install -e .
 
-1. Click **Discover tools**. The scan finds a CLI and two MCP servers both named `workspace-search`, each with a different source. Owner and capabilities are unknown.
-2. Click **Register tool** on each MCP card. Compare their IDs. Stop the app with Ctrl+C and restart it with the same command. Refresh the page and confirm the IDs are recognized.
-3. Click **Scan changed fixture**. The desktop MCP config reports a change from enabled to disabled and retains its ID.
-4. In **Event review**, find `evt-104`. Its audit source, UTC timestamp and reported editor config support the editor candidate. Action approval is missing. Check the consent box and click **Link event**. The linked ID should match the editor card.
-5. Compare `evt-105`, which lacks source context and has two candidates, and `evt-106`, which reports an unobserved config. Neither can be linked. Click **Record incident** on `evt-106` to save the unexpected write attempt alongside the expected read-only behavior.
-6. Click **Export inventory JSON** to download the metadata-only inventory.
-
-## Activity timeline
-
-1. Register both MCP tools, then select **Activity timeline** and **Load activity timeline**.
-2. Open **Compare two runs**, then choose **Editor run** and **Editor helper run**. Forkit shows separate recorded runs of the same installed tool and identifies the reported delegation.
-3. Compare **Editor helper run** with **Desktop run**, then expand **Compare file and folder activity**. Both touched `reports/shared/summary.md`.
-4. Compare **Editor helper run** with **Helper as reported by the agent**. Their sources reused a run reference, so Forkit leaves the relationship unknown.
-5. Look under **What the evidence shows** for the changed log and edits without an identified actor. Expand **Why this is shown** on an activity record to check its source and reasoning.
-
-Use [the scaling and evidence guide](docs/scaling.md) for live log imports, folder checks, and the edge cases a production collector needs to handle. The prototype displays up to 250 activity records and reads up to 4 MiB per log or 10,000 entries per watched folder on each refresh. Folder checks read file names, sizes and modification times. The prototype reads existing logs and does not install an operating-system monitor.
-
-When running in **Device scan** mode, use **Try sample activity** to open a separate sandbox with synthetic tools and records. The two views use separate state. To see real file changes, launch with `--live --watch-dir "path/to/project"`, load the timeline once, change a file, then refresh the timeline. A folder change without a run record appears as an unknown-actor finding in **Event review**.
-
-## Scan local tools
-
-### Run an agent workflow pilot
-
-The pilot launches a report worker in a separate process and records its PID
-and observed before-and-after file change. The delegated scenario runs a helper
-under a declared read-only policy and deliberately lets it write only a
-disposable test file, so Forkit can detect the mismatch.
-
-```powershell
-python agent_pilot.py .forkit-pilot-data/local --deployment local-windows --scenario approved
-python agent_pilot.py .forkit-pilot-data/local --deployment local-windows --scenario delegated
-python audit_repo.py .forkit-pilot-data/local/changes.git .forkit-pilot-data/local/observer.jsonl
-python app.py --live --audit-log .forkit-pilot-data/local/observer.jsonl --audit-repo .forkit-pilot-data/local/changes.git --port 0 --open
+python examples/deterministic_identity_demo.py
 ```
 
-On Linux, use `python3` and `--deployment cloud-linux`. To connect the
-Windows launcher to an existing Google Cloud IAP deployment, create an
-untracked `.forkit-vm.json` beside the launcher with keys `instance`,
-`project`, `zone`, `account`, and `host_key`. Set `host_key` to the
-VM's independently verified SHA256 SSH fingerprint. The launcher uses an
-installed `gcloud`, or a local Python entry point supplied as the optional
-`gcloud_python` setting. Run `& '.\Connect Forkit VM.cmd' --pilot` for a
-pilot listening on the VM's loopback port 18766.
-The pilot only sees changes to its test target around the worker execution.
-It does not enforce OS permissions or provide tamper-resistant host auditing.
+Want the CLI flow instead?
 
-~~~powershell
-python app.py --live --workspace . --config 'C:\path\to\first-mcp.json' --config 'C:\path\to\second-mcp.json'
-~~~
-
-Live discovery checks supported command names on PATH, known Windows desktop install paths, and supported editor extension directories. It also checks known user MCP configs. Repeat `--workspace` for projects and `--config` for additional files. Codex TOML parsing requires Python 3.11 or newer. Event review uses synthetic fixtures in demo mode. All state stays in local SQLite, with separate default databases for demo and live runs.
-
-An MCP identity describes a named slot in a specific config file. A CLI identity describes a named command at its resolved location. A move yields a new candidate. A replacement in the same slot retains the ID, and changes in observed fields are flagged. MCP transport and explicit disabled state are observed metadata. URLs, commands, arguments, environment values, raw paths and event records are excluded from the inventory export. Config files are read as data, and their servers and detected commands are never launched.
-
-## Acceptance tests
-
-### Record collector events in a separate Git repository
-
-Use an append-only JSON Lines feed from your collector. Include the actual
-change in each event, such as a unified diff in a `patch` field, alongside
-the event timestamp, path, operation, source, and run and parent IDs when known.
-See [the synthetic example](fixtures/audit-repo.jsonl). The recorder preserves
-each complete collector row as supplied. A metadata-only row stays metadata-only.
-
-```powershell
-python audit_repo.py '.\forkit-audit-demo.git' '.\fixtures\audit-repo.jsonl'
-git -C '.\forkit-audit-demo.git' log --oneline
-git -C '.\forkit-audit-demo.git' show main:events.jsonl
+```bash
+pip install -e ".[cli]"
+python scripts/generate_passport_template.py --passport-type model --output forkit-passport.json
+python scripts/validate_passport.py --path forkit-passport.json
 ```
 
-For real records, substitute your collector log and a new output directory.
-Run the recorder after each batch to commit new rows. It leaves incomplete
-last lines for the next run and rejects changes to a saved source prefix.
+Create and verify passports locally, then share reproducible examples with the community.
 
-Use a new output directory to start with fresh Git history. Omit `--from-now`
-to replay the log from the beginning, or include it to begin with an empty
-archive and capture only subsequent complete records. The old repository is
-separate and can be retained or deleted locally. Published copies may persist.
-Only publish records you intend to make public, including the contents of diffs.
+AI models and agents often move across repos, tools, teams, and runtimes without stable identity, lineage, or verification. `forkit-core` gives them a local-first identity layer you can create, validate, and keep portable.
 
-To search the archive in the dashboard, start Forkit with the repository path:
+Questions and contributor ideas are welcome in [GitHub Issues](https://github.com/Forkit-Dev-Core/Forkit_Dev/issues).
 
-```powershell
-python app.py --live --audit-repo '.\forkit-audit-demo.git' --port 0 --open
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-2f2a62.svg)](#install)
+[![Status](https://img.shields.io/badge/status-alpha-f49355.svg)](#current-scope)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-008190.svg)](#contributing)
+
+The deterministic identity demo checks these properties:
+
+- same stable passport inputs => same deterministic `passport_id`
+- changed artifact or creator => different `passport_id`
+
+Example output:
+
+```text
+Forkit deterministic passport demo
+
+same input               ddfd461f5fc78574c3244da346f64bf3b1d95e83e0dfe174209937f9d561bd0b
+same input again         ddfd461f5fc78574c3244da346f64bf3b1d95e83e0dfe174209937f9d561bd0b
+changed artifact         e271004e8f9e83d9e81f8f5d3d35736c4e4bf841d46d821d74b59e439d6f3cea
+changed creator          f78fb6bf1d7feee0fb2020753904b50a550f194a5f5664dff91b70601e31f0ac
 ```
 
-Ask Forkit can look up a file path, run, event ID, recent changes, unknown
-actors, or missing approval. Answers link to the audit entry, timeline,
-or event review. The assistant uses local record matching and searches the
-latest 250 committed archive rows and the currently loaded dashboard records.
-The fixture demo and offline preview include sample audit evidence.
-Optional [local model setup](docs/scaling.md#ask-forkit) uses a local Ollama
-instance without sending full diffs in model requests.
+The CLI flow above creates a starter `ModelPassport`, writes a deterministic `id` into `forkit-passport.json`, and verifies that the stored `id` still matches the schema-derived identity. No hosted service is required.
 
-### Verification scope
+## Why This Exists
 
-The tests cover scoped identity across sessions, delegated runs, ambiguous
-evidence, log checkpoints, review findings, audit history and metadata-only
-recording, plus a Windows/Linux pilot with real subprocess file writes.
-Discovery checks supported tools and readable configurations. Complete agent
-coverage, every intermediate write, and tamper-resistant collection still
-require an independent observer appropriate to the deployment. Git imports
-record committed changes and leave agent attribution unknown.
+`forkit-core` makes the passport itself the durable boundary for AI identity.
+Instead of depending on one registry, one dashboard, or one runtime, you keep a
+portable document that can be created locally, reviewed in Git, validated in
+CI, synced across environments, and re-verified later without changing its
+identity.
 
-Generate the offline sample with `python make_preview.py`. Generated HTML
-can embed every record in its input. Keep live state, audit logs, VM settings,
-and generated exports outside the tracked source files.
+This repository is for teams that want:
 
-### Python tests
+- deterministic `passport_id` derivation for models and agents
+- provenance links and artifact hashes that stay attached to the passport
+- lineage across base models, fine-tunes, and agents
+- local-first workflows that do not require a hosted control plane
+- a verification path that fits normal repository and CI practices
 
-~~~powershell
-python -m unittest -v
-~~~
+## What This Is And Isn't
 
-The tests exercise the local HTTP workflow across independent server processes. The discovery design references [Forkit Footprints](https://github.com/Forkit-Dev-Core/footprints).
+What it is:
 
-### Headless browser test
+- a deterministic identity contract for AI models and agents
+- a portable passport document with provenance, artifact hashes, and lineage
+- a local-first SDK, CLI, registry, and CI validation path
 
-With Python 3.10+, Node.js 24, and Chrome or Chromium installed, run from the project folder:
+What it is not:
 
-```powershell
-python browser_smoke.py 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+- a claim that the model is safe, legal, or approved
+- a hosted team governance product by itself
+- a replacement for model cards, SBOMs, or attestations
+
+`forkit-core` is meant to complement those artifacts by giving the model or agent
+itself a stable portable identity that other review and governance layers can
+join on.
+
+## Common Questions
+
+**Why not just use model cards?**
+
+Model cards are useful documentation, but they are not deterministic identity.
+`forkit-core` gives the passport a rebuildable `passport_id` that can be
+re-derived and verified locally.
+
+**Why not just use attestations or SBOMs?**
+
+Attestations and SBOMs are important evidence formats. `forkit-core` is the
+identity layer they can attach to. It focuses on stable identity, lineage, and
+portable provenance rather than replacing supply-chain evidence standards.
+
+**Does `forkit-core` verify that a claim is true?**
+
+It checks that the stored ID matches the passport's identity fields.
+Ownership and publication claims require evidence from the source and review.
+
+## Current Scope
+
+- Deterministic `ModelPassport` and `AgentPassport` records
+- Local JSON passports with a rebuildable SQLite index
+- Python SDK, CLI, validation scripts, and local HTTP service
+- GitHub CI validation for committed passport files
+- Framework adapters for LangGraph, LangChain, and OpenClaw
+- File-based Hugging Face model card export
+- A prototype browser UI with mock data under [`web/`](./web)
+
+Current maturity:
+
+- Alpha open-source core, but the identity contract and deterministic verification behavior are already stable enough to evaluate seriously
+- PyPI is not live yet
+- Self-hosted sync, adapters, and the mock browser UI are available for evaluation
+
+Public install path:
+
+```bash
+pip install "forkit-core @ git+https://github.com/Forkit-Dev-Core/Forkit_Dev.git"
 ```
 
-On Linux, pass the installed Chrome or Chromium executable, for example
-`python3 browser_smoke.py /usr/bin/chromium`. The test uses a temporary browser
-profile and database and runs the fixture workflow through a real browser.
-For restart and live-import checks, also run `python -m unittest -v`.
+## Primary and Advanced Paths
 
-## If the web preview is unreachable
+| Goal | Maturity | Entry point |
+|---|---|
+| Deterministic identity demo | Primary | `python examples/deterministic_identity_demo.py` |
+| Smallest end-to-end local registration flow | Primary | `python examples/sdk_quickstart.py` |
+| Register from YAML through the CLI | Primary | `forkit register model examples/register_model.yaml` |
+| Validate a committed passport in CI | Primary | [`publish/github-ci-demo/`](./publish/github-ci-demo/) |
+| Run the local HTTP service | Primary | `pip install -e ".[server]" && forkit serve --host 127.0.0.1 --port 8000` |
+| Try self-host sync between two local registries | Advanced | `python examples/self_host_sync_quickstart.py` |
+| Try the LangGraph adapter | Advanced | `python examples/langgraph_sync_quickstart.py` |
+| Try the LangChain adapter | Advanced | `python examples/langchain_sync_quickstart.py` |
+| Try the OpenClaw adapter | Advanced | `python examples/openclaw_quickstart.py` |
+| Explore the browser UI prototype | Early | `cd web && npm install && npm run dev` |
 
-From a PowerShell terminal in this folder, run `python app.py --port 0 --open`.
-Forkit picks a free port and opens your system browser. Keep the terminal running.
-If the tab opens in Codex, paste the full address printed in the terminal into
-desktop Chrome or Edge. In a second terminal, use
-`curl.exe --noproxy "*" http://127.0.0.1:PORT/api/state` with the printed port to
-check that the local server responds.
+## Forkit Core and Footprints
 
-Run `python demo.py` for the fixture walkthrough directly in the terminal using
-a temporary database. Run `python -m unittest -v` for automated verification.
+Forkit Core provides the open-source passport engine. [Footprints](https://github.com/Forkit-Dev-Core/footprints) provides a local interface for discovery and passport workflows. Contributors worldwide can help with code, tests, documentation, accessible interfaces, and reproducible examples.
+
+## Identity Boundary
+
+`forkit-core` uses the deterministic `passport_id` as the canonical
+portable identity for a passport.
+
+Applications that import or synchronize a passport must preserve its `passport_id`. Additional application identifiers belong in metadata.
+
+## Install
+
+Python 3.10+ is required. Node.js 20.19+ is only needed if you want to run the
+frontend prototype.
+
+Install from this repository:
+
+```bash
+git clone https://github.com/Forkit-Dev-Core/Forkit_Dev.git
+cd Forkit_Dev
+pip install -e .
+```
+
+Optional extras:
+
+```bash
+pip install -e ".[pydantic]"   # Pydantic v2 backend + JSON Schema
+pip install -e ".[cli]"        # Typer CLI + YAML input
+pip install -e ".[langchain]"  # LangChain adapter helpers
+pip install -e ".[langgraph]"  # LangGraph adapter helpers
+pip install -e ".[server]"     # FastAPI + Uvicorn local service
+pip install -e ".[postgres]"   # Postgres-backed sync receiver
+pip install -e ".[all]"        # all optional extras
+pip install -e ".[dev]"        # tests, linting, and development tooling
+```
+
+Python imports should use `forkit.*`. The legacy `forkit_core.*` namespace is
+kept as a compatibility shim in `v0.1.x`.
+
+## Core Concepts
+
+- `passport_id`: deterministic SHA-256 identity derived from stable passport fields
+- `artifact_hash`: content fingerprint for a model artifact, agent bundle, or config material
+- `parent_hash`: hash-chain link to the parent artifact in a lineage
+- `base_model_id` and `parent_agent_id`: passport-ID lineage links for fine-tunes and forks
+- local registry: JSON source of truth with a rebuildable SQLite index
+- sync bridge: generic `GET /export` and `POST /sync/passports` contract that does not rewrite identity
+
+For the full identity contract, hash rules, regression anchors, and
+serialization guarantees, see [`docs/identity-spec.md`](./docs/identity-spec.md).
+
+## What's Inside
+
+| Module | Purpose |
+|---|---|
+| `forkit/` | Core package: domain logic, schemas, registry, SDK, server, and sync |
+| `forkit_core/` | Compatibility namespace kept during the `v0.1.x` transition |
+| `forkit_langgraph/` | LangGraph adapter helpers |
+| `forkit_langchain/` | LangChain adapter helpers |
+| `forkit_openclaw/` | OpenClaw adapter |
+| `examples/` | Runnable quickstarts and sample passports |
+| `publish/` | Copyable GitHub CI and publishing demos |
+| `scripts/` | Validation, export, and template utilities |
+| `web/` | React + TypeScript + Vite prototype UI |
+| `docs/` | Identity specification and image assets |
+| `tests/` | Regression coverage for schemas, registry, server, sync, and adapters |
+
+## GitHub CI Validation
+
+`forkit-core` includes a lightweight GitHub-native validation path for a
+committed passport file. It checks that the file exists, validates the JSON
+against the current `ModelPassport` or `AgentPassport` schema, and verifies
+that the stored deterministic `id` matches the file content.
+
+Start with [`publish/github-ci-demo/`](./publish/github-ci-demo/):
+
+1. Copy [`publish/github-ci-demo/forkit-passport.json`](./publish/github-ci-demo/forkit-passport.json) into your repository root.
+2. Copy the sample workflow from [`publish/github-ci-demo/README.md`](./publish/github-ci-demo/README.md) or the local reusable action shown below.
+3. Push or open a pull request.
+4. GitHub Actions will fail on missing files, invalid JSON, schema errors, or deterministic `id` mismatches.
+
+Minimal workflow:
+
+```yaml
+name: Validate Forkit passport
+
+on:
+  pull_request:
+    paths:
+      - "forkit-passport.json"
+      - ".github/workflows/validate-forkit-passport.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "forkit-passport.json"
+      - ".github/workflows/validate-forkit-passport.yml"
+
+jobs:
+  validate-passport:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Forkit-Dev-Core/Forkit_Dev/.github/actions/validate-passport@main
+        with:
+          passport-path: forkit-passport.json
+```
+
+Run the same check locally:
+
+```bash
+python scripts/validate_passport.py --path forkit-passport.json
+```
+
+This repository's own workflow validates
+[`examples/forkit-passport.model.json`](./examples/forkit-passport.model.json).
+
+## Python SDK
+
+```python
+from forkit.sdk import ForkitClient
+
+client = ForkitClient()  # defaults to ~/.forkit/registry
+
+model_id = client.models.register(
+    name="my-model",
+    version="1.0.0",
+    task_type="text-generation",
+    architecture="transformer",
+    creator={"name": "Your Team", "organization": "Open Source"},
+)
+
+agent_id = client.agents.register(
+    name="support-agent",
+    version="1.0.0",
+    model_id=model_id,
+    task_type="customer-support",
+    architecture="ReAct",
+    creator={"name": "Your Team", "organization": "Open Source"},
+    system_prompt="Answer concisely.",
+)
+
+print(client.lineage.ancestors(agent_id))
+print(client.verify(model_id))
+```
+
+Runnable entry point:
+
+```bash
+python examples/sdk_quickstart.py
+```
+
+## CLI
+
+Install the CLI extra first:
+
+```bash
+pip install -e ".[cli]"
+```
+
+If `forkit` is not on your `PATH`, use `python -m forkit.cli.main ...` with
+the same arguments.
+
+Repository and package branding uses `forkit-core`. The local CLI binary stays
+`forkit` intentionally so the user-facing command remains short and stable.
+
+Common commands:
+
+```bash
+forkit register model examples/register_model.yaml
+forkit register agent examples/register_agent.yaml
+
+forkit inspect <passport-id>
+forkit list --type model --status active
+forkit search "llama"
+forkit lineage <passport-id>
+forkit verify <passport-id>
+forkit hosted-proof <passport-id>
+forkit stats
+
+forkit sync status
+forkit sync push https://example.com/sync/passports --target main-server
+forkit sync pull https://example.com/export --source remote-dev
+```
+
+`forkit lineage <passport-id>` lists ancestors and descendants with `[model]`
+or `[agent]` labels, followed by each passport's name, version, and short ID.
+
+The CLI is local-first. `forkit sync push` and `forkit sync pull` are generic
+sync primitives for self-hosted or custom HTTP endpoints that preserve
+`passport_id`.
+
+`examples/register_model.yaml` is runnable as checked in. `examples/register_agent.yaml`
+is a second-step sample and expects an already registered model passport ID in `model_id`.
+
+`forkit lineage <passport-id>` exits with status 1 and prints `Not found: <id>`
+to stderr for an unknown passport ID. For a known passport, each empty ancestor
+or descendant section displays `(none)`.
+
+To prepare a source verification proof, set `metadata.source_url` on the
+passport before registration (models can also use `hub_url`). Provide a GitHub,
+Hugging Face, or GitLab repository URL. Then run `forkit hosted-proof <passport-id>`
+to print the `/.well-known/forkit-verify.txt` proof line and target URL. The command
+reads the local registry and does not publish the proof.
+
+## Local Service and Sync
+
+Install the server extra and run the local HTTP service over the same
+filesystem-backed registry:
+
+```bash
+pip install -e ".[server]"
+forkit serve --host 127.0.0.1 --port 8000
+```
+
+Relevant routes:
+
+- `GET /` for service info
+- `GET /healthz` and `GET /readyz` for liveness/readiness checks
+- `POST /models` and `POST /agents` for passport registration
+- `GET /passports/{id}` and `POST /verify/{id}` for fetch and verification
+- `GET /lineage/{id}` for ancestry and descendants
+- `GET /export` and `POST /sync/passports` for generic sync
+
+Security posture for the local service:
+
+- keep `forkit serve` on `127.0.0.1` unless you intentionally place it behind a trusted network boundary
+- set `FORKIT_SYNC_BEARER_TOKEN` before exposing `POST /sync/passports` beyond localhost
+- treat the local service as a developer or self-host primitive, not a public hosted control plane
+
+The repository also includes a runnable self-host demo:
+
+```bash
+python examples/self_host_sync_quickstart.py
+```
+
+That example starts two local registries, pushes one registry's outbox into the
+other's inbox, then pulls exported passports into the mirror registry.
+
+If you need the Postgres-backed receiver, install `.[postgres]` and set:
+
+- `FORKIT_SYNC_BACKEND=postgres`
+- `FORKIT_SYNC_POSTGRES_DSN=postgresql://...`
+- `FORKIT_SYNC_POSTGRES_SCHEMA=public`
+- `FORKIT_SYNC_BEARER_TOKEN=...`
+
+## Framework Adapters
+
+`forkit-core` ships thin adapters that preserve the same passport contract
+while helping you register framework-specific runtime surfaces.
+
+### LangGraph
+
+- Package: [`forkit_langgraph/`](./forkit_langgraph)
+- Example: [`examples/langgraph_sync_quickstart.py`](./examples/langgraph_sync_quickstart.py)
+- Install: `pip install -e ".[langgraph]"`
+
+The current adapter supports spec-based registration and runtime-oriented
+helpers around builder or compiled graph objects.
+
+### LangChain
+
+- Package: [`forkit_langchain/`](./forkit_langchain)
+- Examples: [`examples/langchain_quickstart.py`](./examples/langchain_quickstart.py) and [`examples/langchain_sync_quickstart.py`](./examples/langchain_sync_quickstart.py)
+- Install: `pip install -e ".[langchain]"`
+
+The current adapter captures tool metadata and lightweight runtime summaries
+without turning the core package into a hard LangChain dependency.
+
+### OpenClaw
+
+- Package: [`forkit_openclaw/`](./forkit_openclaw)
+- Example: [`examples/openclaw_quickstart.py`](./examples/openclaw_quickstart.py)
+
+The OpenClaw adapter derives a standard `AgentPassport` from local gateway and
+plugin configuration material such as `openclaw.json`, plugin manifests,
+extension entrypoints, and hook metadata.
+
+## Hugging Face Model Card Export
+
+Forkit passports add deterministic identity, integrity-ready hashes, and
+lineage fields on top of a normal model card workflow. This repo includes a
+small compatibility exporter that converts a `ModelPassport` JSON file into a
+Hugging Face-style markdown card with YAML front matter.
+
+Included files:
+
+- [`scripts/export_hf_model_card.py`](./scripts/export_hf_model_card.py)
+- [`examples/forkit-passport.model.json`](./examples/forkit-passport.model.json)
+- [`examples/huggingface-model-card.md`](./examples/huggingface-model-card.md)
+
+Run it locally:
+
+```bash
+python scripts/export_hf_model_card.py \
+  --path examples/forkit-passport.model.json \
+  --output examples/huggingface-model-card.md
+```
+
+This exporter is file-based only. It does not call the Hugging Face API.
+
+## Frontend Prototype
+
+A React + TypeScript + Vite frontend lives under [`web/`](./web). It is
+included for exploration of the current open-source scope, not as proof of a
+hosted control plane.
+
+Current behavior:
+
+- mock-backed in-memory data, not persistent API-backed state
+- screens for home, dashboard, registry, search, passport detail, create, verify, lineage, and stats
+- useful for demos and product exploration while the durable OSS value stays in the schemas, local registry, SDK, CLI, and examples
+
+Run it locally:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Additional commands:
+
+```bash
+npm run build
+npm run preview
+```
+
+Demo screenshots:
+
+| Home | Registry | Inspect |
+|---|---|---|
+| ![forkit-core home demo](docs/images/home.png) | ![forkit-core registry demo](docs/images/registry.png) | ![forkit-core inspect demo](docs/images/inspect.png) |
+
+## Design Principles
+
+- Offline first. Identity and integrity operations do not require a running service.
+- Deterministic identity. The same stable inputs always produce the same `passport_id`.
+- Hash-chain provenance. `artifact_hash` and `parent_hash` give you verifiable lineage without central coordination.
+- Local JSON as source of truth. SQLite is an index, not the identity authority.
+- Keep application metadata outside the identity boundary. Extra UI or sync state should join on `passport_id`, not rewrite it.
+
+For deeper details, read [`docs/identity-spec.md`](./docs/identity-spec.md) and
+run [`examples/use_cases.py`](./examples/use_cases.py).
+
+## Community
+
+Contributors worldwide are welcome, including first-time contributors, researchers, developers, and people improving documentation and accessibility.
+
+- [Issues](https://github.com/Forkit-Dev-Core/Forkit_Dev/issues) for bugs and proposals
+- [Discussions](https://github.com/Forkit-Dev-Core/Forkit_Dev/discussions) for questions and shared experiments
+- [Pull requests](https://github.com/Forkit-Dev-Core/Forkit_Dev/pulls) for contribution review
+- [Security policy](./SECURITY.md) for private vulnerability reports
+
+Use synthetic data in examples, screenshots, and bug reports. Share only material you have permission to publish.
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution workflow,
+expectations, and release-sensitive areas.
+
+Before opening a pull request:
+
+- run `ruff check .`
+- run `pytest`
+- run `python -m build` if you changed packaging or install-facing docs
+- run `npm run build` and `npm run lint` in `web/` if you changed the frontend
+- update [`docs/identity-spec.md`](./docs/identity-spec.md), examples, and regression tests when you change identity or verification behavior
+- do not change `compute_id` without updating the spec and regression anchors
+
+## License
+
+Apache 2.0. See [LICENSE](./LICENSE).

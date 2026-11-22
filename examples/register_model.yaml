@@ -1,0 +1,43 @@
+# Example ModelPassport config — use with:
+#   forkit register model register_model.yaml
+
+name: demo-instruct-model
+version: 1.0.0
+description: Demo instruction-tuned model for public Forkit Core examples
+task_type: text-generation
+architecture: transformer
+parameter_count: 8000000000
+quantization: fp16
+license: Apache-2.0
+fine_tuning_method: LoRA
+
+base_model_id: null  # fill with parent model passport ID if known
+
+creator:
+  name: Example Maintainer
+  organization: Example Lab
+  email: maintainer@example.org
+  url: https://example.org
+
+capabilities:
+  modalities: [text]
+  context_length: 8192
+  supports_function_calling: true
+  supports_streaming: true
+  languages: [en, ar]
+  benchmark_scores:
+    MMLU: 0.68
+    HumanEval: 0.52
+
+training_data:
+  - name: public-demo-corpus-v1
+    hash: null  # fill with SHA-256 of dataset if you want the dataset fingerprint recorded
+    size_tokens: 12000000
+    cutoff_date: "2024-06-01"
+
+tags: [llm, demo, instruction-tuned, public-example]
+status: active
+
+metadata:
+  team: oss-examples
+  project: public-demo

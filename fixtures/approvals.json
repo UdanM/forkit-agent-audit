@@ -1,0 +1,25 @@
+{
+  "_comment": "External approval records joined to passports by passport_id. Only filesystem-mcp (Claude Desktop) is approved, and only for read actions. postgres-mcp (Claude Desktop) is pending. postgres-mcp (Cursor) has no record at all.",
+  "approvals": [
+    {
+      "approval_id": "appr-0001",
+      "passport_id": "9b360ff794881202afcdb5097c097a071e010b4943256e1f03c08e91dbed6144",
+      "tool_name": "filesystem-mcp",
+      "source_path": "fixtures/claude_desktop_config.json",
+      "status": "approved",
+      "approved_actions": ["fs.read_file", "fs.list_directory", "fs.search_files"],
+      "approved_by": "demo-security-reviewer",
+      "approved_at": "2026-11-19T16:00:00Z"
+    },
+    {
+      "approval_id": "appr-0002",
+      "passport_id": "feb915b9194c892432da93fc8ee8de9c8712ae93fcf64cb17ee715ff46461f7c",
+      "tool_name": "postgres-mcp",
+      "source_path": "fixtures/claude_desktop_config.json",
+      "status": "pending",
+      "approved_actions": [],
+      "approved_by": "UNKNOWN",
+      "approved_at": "UNKNOWN"
+    }
+  ]
+}

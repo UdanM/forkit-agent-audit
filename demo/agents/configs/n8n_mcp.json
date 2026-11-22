@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "n8n-report-flow": {
+      "command": "n8n",
+      "args": ["execute", "--file", "demo/agents/n8n/report_flow.json"],
+      "env": {"N8N_COLLECTOR_TOKEN": "set-at-runtime"}
+    }
+  }
+}

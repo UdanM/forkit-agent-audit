@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "postgres-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres"
+      ],
+      "env": {
+        "POSTGRES_URL": "postgresql://dev_user:FAKE_devpass_DO_NOT_USE_7x2q@localhost:5433/inventory_dev"
+      }
+    }
+  }
+}
