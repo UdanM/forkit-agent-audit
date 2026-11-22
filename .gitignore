@@ -52,3 +52,4 @@ data/local/
 __pycache__/
 .pytest_cache/
 data/agents/
+/.prompt-pair-data/

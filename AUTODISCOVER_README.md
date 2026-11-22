@@ -35,6 +35,7 @@ AutoDiscover answers that, one tab at a time:
 4. **Linking.** Actions a tool takes are filed under its ID card, only with permission. Actions without approval, or outside what the tool may do, become incidents.
 5. **Map.** One page shows the whole chain, from settings file to ID card to action to incident.
 6. **Activity timeline.** Which agent run did what, which helper it delegated to, and whether the activity log is still the one that was saved. An action nobody can be tied to stays UNKNOWN.
+7. **Prompt injection.** Two scripted agents get the same task. Compare what changes when the VM run also receives an unrelated instruction in a file.
 
 Start it with a double-click on **`Start AutoDiscover.cmd`** (Windows) or `./start-autodiscover.sh` (macOS, Linux).
 
@@ -65,6 +66,7 @@ Start it with a double-click on **`Start AutoDiscover.cmd`** (Windows) or `./sta
 | **Git audit archive** | Every link, incident, review item, drift record and activity finding in an append-only bare Git repo; rewrites and replaced histories fail verification | sidebar · [details](#append-only-git-archive) |
 | **Delegated-helper pilot** | Real worker processes; a helper declared read-only edits a protected file and its own report says otherwise | Live agents scenario F |
 | **Ask Forkit** | Short questions answered from records with citations; optional local model, loopback only | expander under the header |
+| **Prompt injection comparison** | Match prompt hashes and compare overlapping runs. An observer flags the VM run's unrelated file change and shows the source record. | 07 tab · [details](demo/agents/README.md#prompt-injection-comparison) |
 
 | File | Purpose |
 |---|---|

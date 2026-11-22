@@ -154,7 +154,7 @@ def test_malformed_policy_file_raises(tmp_path: Path, rule_patch: dict, message:
 
 def test_shipped_policy_file_is_valid() -> None:
     rules = load_policies(REPO / "fixtures" / "policies.json")
-    assert [r["rule_id"] for r in rules] == [f"POL-{i:03d}" for i in range(1, 19)]
+    assert [r["rule_id"] for r in rules] == [f"POL-{i:03d}" for i in range(1, 20)]
     assert {r["applies_to"] for r in rules[5:]} == {"activity"}
 
 

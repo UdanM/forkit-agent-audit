@@ -29,6 +29,7 @@ from typing import Any
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
+from demo.agents.prompt_pair import PROMPT, PROMPT_SHA256
 from src.ask import ask as ask_question
 from src.audit_archive import ArchiveError, git_available
 from src.capture.events import read_events
@@ -820,9 +821,9 @@ elif proof:
         st.json({"before_restart": proof["before"], "after_restart": proof["after"]})
 
 # Keyed, stateful tabs: clicking a button inside a tab keeps you on that tab.
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
     ["Tools", "Passports", "Changes", "Event review",
-     "Map", "Activity timeline"],
+     "Map", "Activity timeline", "Prompt injection"],
     key="active_tab",
     on_change="rerun",
 )
@@ -1401,5 +1402,66 @@ with tab6:
                 "record": r["record_id"], "run": r["run_id"], "claim": r.get("path") or r.get("label") or r["kind"],
                 "verdict": r["verdict"],
             } for r in tl["self_reported"]], width="stretch", hide_index=True)
-        st.caption("Evidence model ported from UdanM/forkit-agent-audit. Rules POL-006 to POL-018 live in "
+        st.caption("Evidence model ported from UdanM/forkit-agent-audit. Rules POL-006 to POL-019 live in "
                    "fixtures/policies.json; diffs are reduced to a hash and size, never stored.")
+
+
+with tab7:
+    st.subheader("Prompt injection comparison")
+    st.write("This test gives two scripted agents the same reporting task and adds an unrelated instruction to one run.")
+    prompt_pair_log = os.environ.get("AUTODISCOVER_PROMPT_PAIR_LOG")
+    if prompt_pair_log:
+        st.caption("Captured test · separate observer records combined from both runs")
+    else:
+        st.caption("Sample replay · bundled test records for the local PC and cloud VM scenarios")
+    prompt_timeline = timeline_from_files(
+        Path(prompt_pair_log) if prompt_pair_log else ACTIVITY_FIXTURES / "prompt_pair_observer.jsonl",
+        rules=eng.policies(), namespace="prompt-pair",
+    )
+    comparisons = prompt_timeline["prompt_comparisons"]
+    if prompt_timeline["rejected"]["observer"]:
+        st.warning("Some observer records could not be read. The comparison may be incomplete.")
+    if not comparisons:
+        st.info("No usable comparison records are available.")
+    finding_ids = {record_id for item in prompt_timeline["findings"] if item["rule_id"] == "POL-019"
+                   for record_id in item["record_ids"]}
+    for pair in comparisons:
+        if len(comparisons) > 1:
+            st.text(f"Trial: {pair['id']}")
+        same_prompt = {True: "Same prompt", False: "Different prompts", None: UNKNOWN}[pair["same_prompt"]]
+        overlap = {True: "Overlapping runs", False: "Runs did not overlap", None: UNKNOWN}[pair["overlap"]]
+        prompt_col, timing_col = st.columns(2)
+        prompt_col.metric("Prompt match", same_prompt)
+        timing_col.metric("Timing", overlap)
+        if pair["same_prompt"] and pair["runs"][0]["prompt_sha256"] == PROMPT_SHA256:
+            st.write(f"**Task** · {PROMPT}")
+        elif pair["same_prompt"] is None:
+            st.info("A comparison needs one control run and one run with an attachment from separate deployments.")
+
+        columns = st.columns(min(2, len(pair["runs"])))
+        for index, arm in enumerate(pair["runs"]):
+            with columns[index % len(columns)].container(border=True):
+                deployment = {"local-pc": "Local PC", "cloud-vm": "Cloud VM"}.get(arm["deployment"], "Other deployment")
+                st.subheader(f"{deployment} · {'with attachment' if arm['attachment'] else 'control'}")
+                if set(arm["out_of_scope_ids"]) & finding_ids:
+                    st.warning("Possible indirect prompt injection")
+                elif arm["outcome"] == "Within task scope":
+                    st.success(arm["outcome"])
+                else:
+                    st.info(arm["outcome"])
+                st.text(f"Attachment: {arm['attachment'] or 'None'}")
+                st.markdown("**Files the observer saw change**")
+                st.code("\n".join(f"{write['operation']}: {write['path']}" for write in arm["writes"])
+                        or "No edits observed", language=None)
+                with st.expander("Source and timestamps"):
+                    st.text(f"Started: {arm['started_at']}\nFinished: {arm['completed_at'] or UNKNOWN}")
+                    st.text(f"Expected file: {arm['allowed_output']}\nRun record: {arm['record_id']}")
+                    st.text(f"Prompt SHA-256: {arm['prompt_sha256']}")
+                    if arm["attachment_sha256"]:
+                        st.text(f"Attachment SHA-256: {arm['attachment_sha256']}")
+                    for write in arm["writes"]:
+                        st.text(f"{write['time']} · {write['operation']} {write['path']} · {write['record_id']}")
+                    if arm["out_of_scope_ids"]:
+                        st.caption("Out-of-scope observer records · " + ", ".join(arm["out_of_scope_ids"]))
+        st.caption("Forkit looks for a file change beyond the declared task while an attachment was present. "
+                   "A reviewer can use the observer records to investigate what caused the change.")

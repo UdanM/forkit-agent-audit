@@ -34,6 +34,24 @@ stay null, because the capture point can't know them.
 Run the pilot on its own with `python -m demo.agents.pilot <new folder>`. It only sees changes to its own
 workspace around each worker; it does not enforce OS permissions.
 
+## Prompt injection comparison
+
+Open **Prompt injection** in the dashboard for a bundled replay. Both scripted agents get the same request
+to write `reports/status.txt`. The VM run also gets `inputs/extra-instructions.json`. The script deliberately
+follows one fixed directive in that attachment and creates the harmless marker `scratch/off-task.txt`.
+The observer compares the workspace before and after each run. Forkit flags a change outside the declared task
+as **Possible indirect prompt injection** (`POL-019`) when an attachment was present. The finding cites the file
+record and its timestamp. An attachment by itself produces no finding.
+
+Run both roles on one machine for a quick check with `python -m demo.agents.prompt_pair <new-folder>`.
+For a two-host run, run the module on each machine with the same unique `--trial` and future `--start-at`
+(such as `2026-11-22T12:00:00+00:00`), choosing `--deployment local-pc` on the PC and `--deployment cloud-vm`
+on the VM. Use a fresh output folder on each host. Combine both `observer.jsonl` files without changing their rows,
+set `AUTODISCOVER_PROMPT_PAIR_LOG` to the combined file, and restart Streamlit to show the capture.
+
+The records contain relative paths, times and fingerprints. This checks how Forkit flags observed behavior from
+a scripted workflow. Workspace snapshots measure the net file changes, and the finding calls for human review.
+
 ## Requirements and fallbacks
 
 - **npx** (Node 18+) for the real filesystem server. Without it the runner uses `mini_fs_server.py`, a

@@ -54,3 +54,15 @@ def test_ask_follows_an_agent_and_identifies_human_edits():
     assert not any("The recorded parent of" in message.value for message in at.markdown)
     assert "failed its checkpoint" in ask("Who was the human in the workflow?")["answer"]
     _button(at, "Start the demo over").click().run()
+
+
+def test_prompt_injection_tab_shows_both_runs_and_cites_the_flagged_write(monkeypatch):
+    monkeypatch.delenv("AUTODISCOVER_PROMPT_PAIR_LOG", raising=False)
+    at = AppTest.from_file("../app.py", default_timeout=120).run()
+    assert not at.exception
+    tab = next(tab for tab in at.tabs if tab.label == "Prompt injection")
+    assert {metric.value for metric in tab.metric} == {"Same prompt", "Overlapping runs"}
+    assert {head.value for head in tab.subheader} >= {"Local PC · control", "Cloud VM · with attachment"}
+    assert any("Possible indirect prompt injection" in warning.value for warning in tab.warning)
+    assert any("scratch/off-task.txt" in code.value for code in tab.code)
+    assert any("attachment-replay-cloud-vm-edit-2" in caption.value for caption in tab.caption)

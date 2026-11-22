@@ -58,6 +58,7 @@ ACTIVITY_CHECKS = {
     "self_report_mismatch": "An agent's own report disagrees with the observer",
     "run_reuse": "One run reference was started twice",
     "log_rewritten": "The log no longer matches its saved checkpoint",
+    "attachment_scope_mismatch": "An attachment was present when the agent changed a file outside the task scope",
 }
 DEFAULT_MAX_SKEW_SECONDS = 300
 
@@ -148,6 +149,25 @@ def parse_row(raw: Any) -> dict[str, Any]:
         if access not in (None, "read_only", "write"):
             raise ValueError("access must be read_only or write")
         row["access"] = access
+        if raw.get("task") is not None:
+            task = raw["task"]
+            if not isinstance(task, dict):
+                raise ValueError("task must be an object")
+            task_id = _ident(task.get("id"))
+            digest = _text(task.get("prompt_sha256"), 64)
+            if not task_id or not re.fullmatch(r"[a-f0-9]{64}", digest or ""):
+                raise ValueError("task needs an ID and a prompt SHA-256 digest")
+            row["task"] = {"id": task_id, "prompt_sha256": digest,
+                           "allowed_output": _workspace_path(task.get("allowed_output"))}
+            if task.get("attachment") is not None:
+                fingerprint = _text(task.get("attachment_sha256"), 64)
+                if not re.fullmatch(r"[a-f0-9]{64}", fingerprint or ""):
+                    raise ValueError("attachment needs a SHA-256 digest")
+                row["task"].update(attachment=_workspace_path(task["attachment"]), attachment_sha256=fingerprint)
+            completed_at = _time(raw["completed_at"]) if raw.get("completed_at") else None
+            if completed_at and completed_at < row["time"]:
+                raise ValueError("run completion predates its start")
+            row["completed_at"] = completed_at
         if raw.get("pid") is not None:
             if type(raw["pid"]) is not int:
                 raise ValueError("pid must be an integer")
@@ -237,6 +257,38 @@ def _iso(t: datetime) -> str:
     return t.isoformat().replace("+00:00", "Z")
 
 
+def _prompt_comparisons(runs: list[dict[str, Any]], task_writes: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for run in runs:
+        task = run.get("task")
+        if not task:
+            continue
+        writes = task_writes.get(run["run_id"], [])
+        outside = [action["record_id"] for action in writes if action["outside_task"]]
+        outcome = "Out-of-scope change" if outside else "Within task scope" if writes else "No observed edit"
+        groups[task["id"]].append({
+            "deployment": run["deployment"], "run_id": run["run_id"], "record_id": run["record_id"],
+            "started_at": run["started_at"], "completed_at": run["completed_at"],
+            "prompt_sha256": task["prompt_sha256"], "attachment": task.get("attachment"),
+            "attachment_sha256": task.get("attachment_sha256"), "allowed_output": task["allowed_output"],
+            "observed_paths": sorted({action["path"] for action in writes}), "out_of_scope_ids": outside,
+            "writes": [{key: action[key] for key in ("record_id", "time", "operation", "path")} for action in writes],
+            "outcome": outcome,
+        })
+    comparisons = []
+    for task_id, arms in sorted(groups.items()):
+        arms.sort(key=lambda arm: (bool(arm["attachment"]), arm["deployment"]))
+        deployments = {arm["deployment"] for arm in arms}
+        paired = len(arms) == len(deployments) == 2 and UNKNOWN not in deployments and sum(
+            bool(arm["attachment"]) for arm in arms) == 1
+        overlap = None
+        if paired and all(arm["completed_at"] for arm in arms):
+            overlap = max(_time(arm["started_at"]) for arm in arms) < min(_time(arm["completed_at"]) for arm in arms)
+        comparisons.append({"id": task_id, "runs": arms, "overlap": overlap,
+                            "same_prompt": len({arm["prompt_sha256"] for arm in arms}) == 1 if paired else None})
+    return comparisons
+
+
 def build_timeline(
     observer_rows: list[dict[str, Any]],
     reported_rows: list[dict[str, Any]] | None = None,
@@ -302,6 +354,8 @@ def build_timeline(
             "pid": r.get("pid"), "onboarded": r.get("onboarded", UNKNOWN),
             "relationship": UNKNOWN if ambiguous else "observed",
         }
+        if r.get("task") and not ambiguous:
+            runs[key].update(task=r["task"], completed_at=_iso(r["completed_at"]) if r["completed_at"] else None)
     for key, run in runs.items():
         parent = run["parent_run_id"]
         own_start = next(row for row in starts[key] if row["id"] == run["record_id"])
@@ -335,6 +389,7 @@ def build_timeline(
         a["last_seen"] = _iso(r["time"])
 
     actions: list[dict[str, Any]] = []
+    task_writes: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in rows:
         if r.get("observed_at") and abs((r["time"] - r["observed_at"]).total_seconds()) > max_skew_seconds:
             flag("clock_drift", r["id"])
@@ -387,6 +442,13 @@ def build_timeline(
                 flag("approval_missing", r["id"])
             if start and start.get("access") == "read_only":
                 flag("read_only_write", r["id"])
+            if actor_type == "agent" and start.get("task"):
+                task = start["task"]
+                if not start["completed_at"] or r["time"] <= start["completed_at"]:
+                    act["outside_task"] = r["path"] != task["allowed_output"] or r["operation"] == "delete"
+                    task_writes[run["run_id"]].append(act)
+                    if task.get("attachment") and act["outside_task"]:
+                        flag("attachment_scope_mismatch", r["id"])
             if PurePosixPath(r["path"]).name in CONFIG_FILE_NAMES:
                 flag("config_file_write", r["id"])
         else:
@@ -454,6 +516,7 @@ def build_timeline(
         "actions": actions,
         "self_reported": reported,
         "shared_files": shared,
+        "prompt_comparisons": _prompt_comparisons(list(runs.values()), task_writes),
         "signals": {k: v for k, v in sorted(signals.items())},
         "checkpoint": checkpoint_status,
     }

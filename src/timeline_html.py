@@ -44,6 +44,7 @@ _FLAGS = {
     "approval_missing": ("no approval", "b"), "unknown_actor": ("actor unknown", "w"),
     "config_file_write": ("tool config changed", "w"), "clock_drift": ("clock drift", "w"),
     "sequence_gap": ("log gap before this", "w"),
+    "attachment_scope_mismatch": ("possible prompt injection", "b"),
 }
 
 
