@@ -20,7 +20,7 @@ who delegated it, and whether the activity log itself was rewritten.
 
 It is built on top of Forkit Core in this repository. Passport IDs come from Forkit Core's own
 `forkit.domain.identity.compute_id`, and hashing uses `forkit.domain.hashing.HashEngine`.
-The original project README is untouched in [`README.md`](README.md).
+The original project README is preserved as the [Forkit Core reference](FORKIT_CORE_README.md).
 
 > **New here?** Read [docs/OVERVIEW.md](docs/OVERVIEW.md). **Building something similar?** See [docs/MERGE_BRIEF.md](docs/MERGE_BRIEF.md).
 

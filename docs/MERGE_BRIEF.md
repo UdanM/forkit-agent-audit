@@ -4,7 +4,7 @@
 describes the code at the time of writing; file and function names are exact.*
 
 Repo: https://github.com/eren-mutlu/forkit-autodiscover-hackathon (branch `main`). The project is built on
-top of the Forkit Core repository; the original Forkit README is in [`README.md`](../README.md).
+top of the Forkit Core repository; the original Forkit README is in the [Forkit Core reference](../FORKIT_CORE_README.md).
 
 ## 1. Architecture and module map
 
